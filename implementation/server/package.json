@@ -1,0 +1,14 @@
+{
+  "name": "edudesk-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "EduDesk Offline Campus Display MVP - readonly bundle server (Node reference impl)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "withdraw": "node admin-withdraw.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

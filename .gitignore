@@ -1,0 +1,32 @@
+# ------------------------------------------------------------------
+# EduDesk Offline — Campus Display MVP
+# 只提交「设计文档 + 源码 + 部署脚本」；不提交编译产物与运行时状态。
+# ------------------------------------------------------------------
+
+# ---- 编译产物 ----
+*.exe
+*.exe~
+*.dll
+*.pdb
+*.o
+*.a
+
+# ---- 运行时日志（含审计留痕，属现场数据，不入库）----
+*.log
+
+# ---- 运行时状态（服务在 %ProgramData%\EduDesk 生成；此处兜底）----
+heartbeat.json
+terminal-state.json
+watchdog.json
+*.tmp
+
+# ---- Node（参考实现）----
+node_modules/
+npm-debug.log*
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+Desktop.ini

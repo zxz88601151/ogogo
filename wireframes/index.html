@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EduDesk Offline — Campus Display MVP 线框图</title>
+<style>
+  :root{
+    --bg:#f5f6f8;
+    --surface:#ffffff;
+    --ink:#1f2328;
+    --ink-2:#3f4650;
+    --muted:#6b7280;
+    --line:#c9cfd8;
+    --dash:#a6adb8;
+    --accent:#2563eb;
+    --accent-soft:#dbe6ff;
+    --warn:#b45309;
+    --warn-soft:#fdf0dc;
+    --danger:#b42318;
+    --danger-soft:#fdeceb;
+    --ok:#0f7b55;
+    --ok-soft:#e3f5ee;
+    --fill:#e9ecf1;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;padding:32px 28px 64px;
+    background:var(--bg);color:var(--ink);
+    font-family:"Segoe UI","Microsoft YaHei","PingFang SC",-apple-system,sans-serif;
+    line-height:1.55;
+  }
+  .wrap{max-width:1240px;margin:0 auto;}
+  header.top{border-bottom:2px solid var(--line);padding-bottom:18px;margin-bottom:28px;}
+  h1{font-size:26px;margin:0 0 6px;letter-spacing:.3px;}
+  .sub{color:var(--muted);font-size:13px;}
+  .badges{margin-top:12px;display:flex;flex-wrap:wrap;gap:8px;}
+  .badge{font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink-2);}
+  .badge.ok{background:var(--ok-soft);border-color:#bfe3d4;color:var(--ok);}
+  .badge.no{background:var(--danger-soft);border-color:#f5c9c5;color:var(--danger);}
+
+  section{margin:36px 0;}
+  h2{font-size:19px;margin:0 0 4px;padding-left:10px;border-left:4px solid var(--accent);}
+  .h2note{color:var(--muted);font-size:12.5px;margin:6px 0 18px;padding-left:14px;}
+
+  /* ---- screen frame ---- */
+  .screen{
+    position:relative;width:100%;aspect-ratio:16/9;
+    background:var(--surface);
+    border:1.5px solid var(--line);border-radius:8px;
+    overflow:hidden;display:flex;flex-direction:column;
+    container-type:inline-size;
+    font-size:10px;
+    box-shadow:0 1px 3px rgba(16,24,40,.06);
+  }
+  .screen > .row{display:flex;}
+  .box{border:1px dashed var(--dash);margin:0;padding:.7cqw 1cqw;}
+  .label{position:relative;}
+  .tag{
+    position:absolute;top:-.75em;left:.6em;background:var(--bg);padding:0 .4em;
+    font-size:1.05em;color:var(--muted);letter-spacing:.5px;
+  }
+  .tag2{
+    display:inline-block;font-size:.95em;color:var(--muted);
+    border:1px solid var(--line);border-radius:3px;padding:0 .45em;margin-bottom:.5em;background:#fbfcfd;
+  }
+  strong.hl{color:var(--ink);}
+
+  /* text scale helpers */
+  .t-xs{font-size:1.05em;} .t-s{font-size:1.25em;} .t-m{font-size:1.5em;}
+  .t-l{font-size:2em;} .t-xl{font-size:2.8em;} .t-xxl{font-size:4.2em;}
+  .muted{color:var(--muted);} .dim{opacity:.45;}
+  .right{text-align:right;} .center{text-align:center;}
+  .b{font-weight:700;}
+
+  .hr{border-top:1px dashed var(--dash);margin:.5em 0;}
+
+  .grid-main{display:flex;flex:1;min-height:0;}
+  .col{flex:0 0 auto;}
+
+  /* semantic card fills */
+  .card{border:1.5px solid var(--line);border-radius:6px;padding:.9cqw 1.1cqw;margin-bottom:.8cqw;background:#fdfdfe;}
+  .card.active{border-color:var(--accent);border-left:6px solid var(--accent);background:var(--accent-soft);}
+  .card.next{border-color:#9db4e8;}
+  .card.ghost{border-style:dashed;opacity:.6;}
+
+  .pill{display:inline-block;border-radius:999px;padding:.05em .6em;font-size:1.05em;border:1px solid var(--line);background:var(--fill);}
+  .pill.ok{background:var(--ok-soft);border-color:#bfe3d4;color:var(--ok);}
+  .pill.warn{background:var(--warn-soft);border-color:#f0d9b5;color:var(--warn);}
+  .pill.danger{background:var(--danger-soft);border-color:#f5c9c5;color:var(--danger);}
+
+  .dots{display:flex;gap:.5cqw;justify-content:center;align-items:center;}
+  .dot{width:.9cqw;height:.9cqw;border-radius:50%;border:1px solid var(--dash);}
+  .dot.on{background:var(--accent);border-color:var(--accent);}
+
+  .fillbox{background:var(--fill);border:1px solid var(--line);border-radius:3px;}
+
+  figcaption{font-size:12.5px;color:var(--muted);margin-top:8px;}
+  figure{margin:0;}
+
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:900px){.two{grid-template-columns:1fr;}}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;background:var(--surface);}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top;}
+  th{background:#eef1f6;font-weight:600;}
+  code{background:var(--fill);padding:1px 5px;border-radius:3px;font-family:Consolas,Menlo,monospace;font-size:.92em;}
+  .note{background:#fbfcfd;border:1px solid var(--line);border-left:4px solid var(--accent);padding:10px 14px;font-size:13px;margin:14px 0;border-radius:4px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>EduDesk Offline ｜ Campus Display MVP — 线框图包</h1>
+  <div class="sub">设计阶段交付物 · v0.1 · 2026-10-15 · 仅供 Owner 评审，不授权实施</div>
+  <div class="badges">
+    <span class="badge ok">设计交付 READY</span>
+    <span class="badge no">实施 NOT AUTHORIZED</span>
+    <span class="badge">只读展示终端</span>
+    <span class="badge">离线优先</span>
+    <span class="badge">校内 LAN</span>
+    <span class="badge">Profile: classroom / corridor</span>
+  </div>
+</header>
+
+<!-- ============ 1. IA ============ -->
+<section>
+  <h2>1. 四层信息架构（L1 Ticker → L4 Shell）</h2>
+  <div class="h2note">Shell 常驻、永不轮播、永不承载业务数据；内容密度自下而上递减。</div>
+  <table>
+    <tr><th style="width:90px">层</th><th style="width:150px">名称</th><th>职责</th><th style="width:220px">回答的问题</th></tr>
+    <tr><td><b>L4</b></td><td>SHELL 常驻层</td><td>校名 / 区域 / 日期 / 时钟 / 网络·数据时效徽标 / 终端号</td><td>"我是哪台屏、现在几点、数据新不新"</td></tr>
+    <tr><td><b>L3</b></td><td>PRIMARY 主区</td><td>教室屏＝今日课表；走廊屏＝单教学卡轮播</td><td>"现在 / 接下来是什么"</td></tr>
+    <tr><td><b>L2</b></td><td>SECONDARY 次区</td><td>作业 / 日程 / 公告</td><td>"我今天要关心什么"</td></tr>
+    <tr><td><b>L1</b></td><td>TICKER 底栏</td><td>重要·紧急公告滚动条 + 数据时效戳</td><td>"还有什么在变"</td></tr>
+  </table>
+  <div class="note"><b>空态原则：</b>区块无数据时必须<b>折叠消失</b>，不允许出现"暂无数据"占位框 —— 公共屏上的空卡片会被误读为故障。</div>
+</section>
+
+<!-- ============ 2. 教室屏 ============ -->
+<section>
+  <h2>2. 教室屏 <code>profile: classroom</code>　1920×1080（16:9）</h2>
+  <div class="h2note">观看 1–8 m，停留 30 s–10 min → 允许中等密度、多区块并存。最小正文 24 px。</div>
+  <figure>
+  <div class="screen">
+    <!-- L4 SHELL 9% -->
+    <div class="row label" style="flex:0 0 9%;align-items:center;padding:0 1.2cqw;border-bottom:1.5px solid var(--line);background:#fcfdfe;">
+      <span class="tag" style="position:static;margin-right:.6em">L4</span>
+      <span class="t-l b">🏫</span>
+      <span class="t-m b" style="margin-left:.6em">市第一中学</span>
+      <span class="t-s muted" style="margin-left:.8em">教学A楼 · 高一(3)班</span>
+      <span style="flex:1"></span>
+      <span class="t-s">2026-10-15 周四</span>
+      <span style="width:1.2em"></span>
+      <span class="t-l b">09:41<span class="t-s muted">:23</span></span>
+      <span style="width:1em"></span>
+      <span class="pill ok t-xs">● 在线</span>
+    </div>
+
+    <!-- L3 + L2 -->
+    <div class="grid-main">
+      <!-- PRIMARY 63% -->
+      <div class="col label" style="flex:0 0 63%;padding:.9cqw;border-right:1.5px dashed var(--line);display:flex;flex-direction:column;">
+        <span class="tag">L3 PRIMARY</span>
+        <div class="card active t-s">
+          <div style="display:flex;align-items:baseline;">
+            <span class="pill t-xs">▍当前</span>
+            <span class="t-m b" style="margin-left:.6em">第2节</span>
+            <span class="muted t-s" style="margin-left:.6em">08:55 – 09:40</span>
+            <span style="flex:1"></span>
+            <span class="t-xs b">剩余 <span class="t-m">12</span> 分钟</span>
+          </div>
+          <div class="t-xxl b" style="line-height:1.1;margin:.1em 0">数学</div>
+          <div class="t-s muted">张老师 · A-302 · 高一(3)班</div>
+          <div class="fillbox" style="height:1.1cqw;margin-top:.5em;background:linear-gradient(90deg,var(--accent) 72%,#e6ecf7 72%);"></div>
+        </div>
+        <div class="card next t-s">
+          <div style="display:flex;align-items:baseline;">
+            <span class="pill t-xs">○ 接下来</span>
+            <span class="t-m b" style="margin-left:.6em">第3节</span>
+            <span class="muted t-s" style="margin-left:.6em">09:50 – 10:35</span>
+          </div>
+          <div class="t-xl b" style="line-height:1.15">物理</div>
+          <div class="t-s muted">李老师 · A-305</div>
+        </div>
+        <div class="card ghost t-s">
+          <div class="muted t-xs b" style="margin-bottom:.3em">今日剩余</div>
+          <div>第4节 英语 王老师 A-302　10:45</div>
+          <div class="hr"></div>
+          <div>第5节 体育 赵老师 田径场　11:40</div>
+          <div class="hr"></div>
+          <div>第6节 历史 陈老师 A-302　14:00</div>
+          <div class="hr"></div>
+          <div class="dim">第7节 自习　14:55</div>
+        </div>
+      </div>
+
+      <!-- SECONDARY 37% -->
+      <div class="col label" style="flex:1;padding:.9cqw;display:flex;flex-direction:column;">
+        <span class="tag">L2 SECONDARY</span>
+        <div class="card t-s" style="flex:0 0 auto;">
+          <div class="t-m b" style="margin-bottom:.3em">📝 今日作业　<span class="pill t-xs">3</span></div>
+          <div>· 数学 练习册 P42-43 <span class="muted">截止 明天 08:00</span></div>
+          <div>· 物理 实验报告 <span class="muted">截止 10-17 周五</span></div>
+          <div>· 语文 背诵《滕王阁序》 <span class="muted">截止 10-20</span></div>
+        </div>
+        <div class="card t-s" style="flex:1;">
+          <div class="t-m b" style="margin-bottom:.3em">📢 公告　<span class="pill t-xs">1/3</span></div>
+          <div class="t-l b" style="line-height:1.2">期中考试时间安排通知</div>
+          <div class="hr"></div>
+          <div class="muted t-xs">教务处 · 10-14</div>
+          <div class="t-s" style="margin-top:.2em">本次期中考试将于 11 月 4 日至 6 日进行，请各位同学留意各科目考场安排……</div>
+          <div style="flex:1"></div>
+          <div class="fillbox" style="height:6cqw;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:1.1em;">摘要 ≤ 80 字</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- L1 TICKER 7% -->
+    <div class="row label" style="flex:0 0 7%;align-items:center;border-top:1.5px solid var(--line);background:#fcfdfe;padding:0 1.2cqw;">
+      <span class="tag" style="position:static;margin-right:.6em">L1</span>
+      <span class="pill warn t-xs">⚠ 重要</span>
+      <span class="t-s" style="margin-left:.6em;white-space:nowrap;overflow:hidden;">明日放假调休通知 ｜ 校运会报名截止 10-18 ｜ 图书馆延时开放至 21:00 ｜</span>
+      <span style="flex:1"></span>
+      <span class="t-xs muted">数据更新于 09:35 · 在线 <span class="b">✅</span></span>
+    </div>
+  </div>
+  <figcaption>图 2-1　教室屏常规态（LIVE）。灰色虚线框＝占位/待替换区域，不代表最终视觉。</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 3. 走廊屏 ============ -->
+<section>
+  <h2>3. 走廊屏 <code>profile: corridor</code>　舞台区一次仅呈现 1 条信息</h2>
+  <div class="h2note">观看 3–20 m，停留 3–15 s → 单主题大卡、8 s 轮播、最小正文 40 px、对比度 ≥7:1。</div>
+
+  <div class="two">
+    <figure>
+      <div class="screen">
+        <div class="row label" style="flex:0 0 14%;align-items:center;padding:0 1.5cqw;border-bottom:1.5px solid var(--line);background:#fcfdfe;">
+          <span class="tag" style="position:static;margin-right:.6em">L4</span>
+          <span class="t-xl b">市第一中学</span>
+          <span class="t-m muted" style="margin-left:.8em">教学A楼 2F</span>
+          <span style="flex:1"></span>
+          <span class="t-m">周四 10月15日</span>
+          <span style="width:1.5em"></span>
+          <span class="t-xxl b">09:41</span>
+          <span style="width:1em"></span>
+          <span class="pill ok t-xs">● 在线</span>
+        </div>
+
+        <div class="label center" style="flex:1;padding:1.4cqw;display:flex;flex-direction:column;justify-content:center;">
+          <span class="tag" style="left:1.2em;">L3 STAGE · 单主题</span>
+          <div style="border:2px solid var(--accent);border-radius:8px;padding:2cqw;background:var(--accent-soft);">
+            <div class="t-l">正在上课</div>
+            <div class="t-xxl b" style="line-height:1.05;letter-spacing:.06em;">数学</div>
+            <div class="t-l">张老师 · A-302</div>
+            <div class="hr" style="border-color:var(--accent);"></div>
+            <div class="t-m">第2节　08:55 – 09:40</div>
+            <div class="t-l b">剩余 12 分钟</div>
+          </div>
+          <div class="dots" style="margin-top:1.2cqw;">
+            <span class="dot on"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          </div>
+        </div>
+
+        <div class="label" style="flex:0 0 21%;border-top:1.5px dashed var(--line);padding:1cqw;display:flex;gap:1cqw;">
+          <span class="tag" style="left:1.2em;">L2 NEXT STRIP · 不轮播</span>
+          <div class="fillbox t-m" style="flex:1;padding:.8cqw;">09:50 物理<br><span class="muted t-s">李老师 A-305</span></div>
+          <div class="fillbox t-m" style="flex:1;padding:.8cqw;">10:45 英语<br><span class="muted t-s">王老师 A-302</span></div>
+          <div class="fillbox t-m" style="flex:1;padding:.8cqw;">明天 校运会<br><span class="muted t-s">全天 · 田径场</span></div>
+        </div>
+
+        <div class="row label" style="flex:0 0 7%;align-items:center;border-top:1.5px solid var(--line);background:#fcfdfe;padding:0 1.5cqw;">
+          <span class="tag" style="position:static;margin-right:.6em">L1</span>
+          <span class="pill warn t-xs">⚠ 紧急</span>
+          <span class="t-m" style="margin-left:.6em;white-space:nowrap;overflow:hidden;">今日 15:00 消防演练，请听从广播指挥……</span>
+          <span style="flex:1"></span>
+          <span class="t-s muted">更新 09:35 ●</span>
+        </div>
+      </div>
+      <figcaption>图 3-1　走廊屏 · 槽位 S1「当前/下一节课程大卡」</figcaption>
+    </figure>
+
+    <figure>
+      <div class="screen">
+        <div class="row label" style="flex:0 0 14%;align-items:center;padding:0 1.5cqw;border-bottom:1.5px solid var(--line);background:#fcfdfe;">
+          <span class="tag" style="position:static;margin-right:.6em">L4</span>
+          <span class="t-xl b">市第一中学</span><span class="t-m muted" style="margin-left:.8em">教学A楼 2F</span>
+          <span style="flex:1"></span><span class="t-xxl b">09:41</span>
+          <span style="width:1em"></span><span class="pill ok t-xs">● 在线</span>
+        </div>
+
+        <div class="label center" style="flex:1;padding:1.4cqw;display:flex;flex-direction:column;justify-content:center;">
+          <span class="tag" style="left:1.2em;">L3 STAGE · 槽位 S3 作业提醒</span>
+          <div style="border:2px solid #7c5cbf;border-radius:8px;padding:2cqw;background:#f1ecfb;">
+            <div class="t-l">作业提醒 · 明天截止</div>
+            <div class="t-xxl b" style="line-height:1.1;">数学</div>
+            <div class="t-l">练习册 P42-43</div>
+            <div class="hr" style="border-color:#7c5cbf;"></div>
+            <div class="t-l b">截止　明天 08:00</div>
+          </div>
+          <div class="dots" style="margin-top:1.2cqw;">
+            <span class="dot"></span><span class="dot"></span><span class="dot on"></span><span class="dot"></span>
+          </div>
+        </div>
+
+        <div class="label" style="flex:0 0 21%;border-top:1.5px dashed var(--line);padding:1cqw;display:flex;gap:1cqw;">
+          <span class="tag" style="left:1.2em;">L2 NEXT STRIP</span>
+          <div class="fillbox t-m" style="flex:1;padding:.8cqw;">09:50 物理<br><span class="muted t-s">李老师 A-305</span></div>
+          <div class="fillbox t-m" style="flex:1;padding:.8cqw;">10:45 英语<br><span class="muted t-s">王老师 A-302</span></div>
+          <div class="fillbox t-m" style="flex:1;padding:.8cqw;">明天 校运会<br><span class="muted t-s">全天 · 田径场</span></div>
+        </div>
+
+        <div class="row label" style="flex:0 0 7%;align-items:center;border-top:1.5px solid var(--line);background:#fcfdfe;padding:0 1.5cqw;">
+          <span class="t-s muted" style="flex:1">更新 09:35 ●</span>
+        </div>
+      </div>
+      <figcaption>图 3-2　走廊屏轮播序列：S1 课程 → S2 日程 → S3 作业 → S4 公告，每屏 8 s</figcaption>
+    </figure>
+  </div>
+
+  <table style="margin-top:16px;">
+    <tr><th style="width:70px">槽位</th><th style="width:220px">内容</th><th style="width:80px">停留</th><th>条件</th></tr>
+    <tr><td><b>S1</b></td><td>当前/下一节课程大卡</td><td>10 s</td><td>D-TB 非空</td></tr>
+    <tr><td><b>S2</b></td><td>近期日程（未来 7 天内最近 1 条）</td><td>8 s</td><td>D-EV 非空</td></tr>
+    <tr><td><b>S3</b></td><td>作业提醒（最紧急 1 条）</td><td>8 s</td><td>D-AS 非空</td></tr>
+    <tr><td><b>S4</b></td><td>公告（priority 最高 1 条）</td><td>8 s</td><td>D-AN 非空</td></tr>
+    <tr><td>—</td><td>全部为空 → 仅 Shell + 校训卡（降级态）</td><td>—</td><td>所有域空</td></tr>
+  </table>
+</section>
+
+<!-- ============ 4. 差异矩阵 ============ -->
+<section>
+  <h2>4. 教室屏 vs 走廊屏：差异配置矩阵</h2>
+  <div class="h2note">走廊屏不是教室屏的缩小版 —— 它是独立信息架构。</div>
+  <table>
+    <tr><th style="width:210px">配置项</th><th>教室屏 <code>classroom</code></th><th>走廊屏 <code>corridor</code></th><th style="width:190px">理由</th></tr>
+    <tr><td>Shell 高度</td><td>9%</td><td>14%</td><td>远距离需更大标识</td></tr>
+    <tr><td>主区同时信息实体数</td><td>6–8</td><td><b>1</b></td><td>注意力预算</td></tr>
+    <tr><td>最小正文字号 @1080p</td><td>24 px</td><td><b>40 px</b></td><td>20 m 可读性</td></tr>
+    <tr><td>最小主标题字号</td><td>36 px</td><td><b>72 px</b></td><td>同上</td></tr>
+    <tr><td>轮播间隔</td><td>8 s（仅公告区）</td><td><b>8–10 s（整屏）</b></td><td>人流节奏</td></tr>
+    <tr><td>滚动条速度</td><td>60 px/s</td><td>100 px/s</td><td>远距离需更快通过</td></tr>
+    <tr><td>日期/时钟</td><td>紧凑，右上</td><td>巨大，居中偏右</td><td>走廊屏承担"钟表"职能</td></tr>
+    <tr><td>作业展示条数</td><td>3–5</td><td>1（最紧急）</td><td>密度限制</td></tr>
+    <tr><td>公告正文</td><td>摘要 ≤ 80 字</td><td>标题 ≤ 24 字，无正文</td><td>同上</td></tr>
+    <tr><td>对比度要求</td><td>≥ 4.5:1</td><td><b>≥ 7:1</b></td><td>强逆光环境</td></tr>
+    <tr><td>轮播指示器</td><td>无</td><td>有（圆点）</td><td>提示"内容会变"</td></tr>
+  </table>
+</section>
+
+<!-- ============ 5. 网络/时效状态 ============ -->
+<section>
+  <h2>5. 网络与数据时效状态（4 级视觉）</h2>
+  <div class="h2note">核心原则：<b>旧缓存永不带"实时"标识</b>；STALE ≠ OFFLINE ≠ INVALID。</div>
+  <div class="two">
+    <figure>
+      <div class="screen" style="aspect-ratio:16/5;">
+        <div class="row label" style="flex:1;align-items:center;padding:0 2cqw;gap:1.5cqw;">
+          <span class="tag" style="left:1em;">① NORMAL</span>
+          <span class="t-xl b">教室屏 · 正常</span>
+          <span style="flex:1"></span>
+          <span class="t-m muted">数据更新于 09:35</span>
+          <span class="pill ok t-m">● 在线</span>
+        </div>
+      </div>
+      <figcaption>无标记 · 正常渲染</figcaption>
+    </figure>
+
+    <figure>
+      <div class="screen" style="aspect-ratio:16/5;filter:saturate(.55);border-color:#e4cda5;background:#fffdf8;">
+        <div class="row label" style="flex:1;align-items:center;padding:0 2cqw;gap:1.5cqw;">
+          <span class="tag" style="left:1em;">② STALE</span>
+          <span class="t-xl b">内容去饱和</span>
+          <span style="flex:1"></span>
+          <span class="t-m muted">数据截至 09:20</span>
+          <span class="pill warn t-m">⏱ 数据较旧</span>
+        </div>
+      </div>
+      <figcaption><code>now &gt; generated_at + ttl(900s)</code> → 去饱和 + 右下灰色标</figcaption>
+    </figure>
+
+    <figure>
+      <div class="screen" style="aspect-ratio:16/5;border-color:#e4cda5;background:#fffaf1;">
+        <div class="row label" style="flex:1;align-items:center;padding:0 2cqw;gap:1.5cqw;">
+          <span class="tag" style="left:1em;">③ OFFLINE</span>
+          <span class="t-xl b">离线服务中</span>
+          <span style="flex:1"></span>
+          <span class="t-m muted">最后更新 09:20 · 离线 12 min</span>
+          <span class="pill warn t-m">⚠ 离线模式</span>
+        </div>
+      </div>
+      <figcaption>网络不可达 → 琥珀三角 + 底栏常驻"最后更新 HH:MM · 离线"</figcaption>
+    </figure>
+
+    <figure>
+      <div class="screen" style="aspect-ratio:16/5;border-color:#f0bcb7;background:#fff5f4;">
+        <div class="row label" style="flex:1;align-items:center;justify-content:center;padding:0 2cqw;gap:1.5cqw;">
+          <span class="tag" style="left:1em;">④ BLOCKED</span>
+          <span class="t-xl b">暂时无法显示，请联系管理员</span>
+          <span class="pill danger t-m">■ 服务暂不可用 · TERMINAL-A2F-07</span>
+        </div>
+      </div>
+      <figcaption><b>不显示任何业务内容</b>：超 <code>max_offline_hours(72h)</code> 或签名无效且无可用缓存</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <h2>6. 待决事项（需 Owner 裁决）</h2>
+  <table>
+    <tr><th style="width:80px">ID</th><th>决策点</th><th style="width:90px">状态</th><th style="width:260px">验证方式</th></tr>
+    <tr><td>D-01</td><td>走廊屏是否支持竖屏 1080×1920</td><td>🟡 待决</td><td>现场测量屏位 → Owner 裁断</td></tr>
+    <tr><td>D-03</td><td>Emergency Takeover 是否启用及其权限白名单</td><td>🟡 待决</td><td>教务处书面确认发布权限清单</td></tr>
+    <tr><td>D-07</td><td>考试模式（含走廊屏相关展示）</td><td>🔒 已冻结</td><td>走廊相关展示首期不实现；基础 is_exam 仅教室屏轻量提示</td></tr>
+    <tr><td>C-01</td><td>教室/走廊双 profile 差异化（非单一布局）</td><td>✅ 已确认</td><td>现场 20 m 可读性测试</td></tr>
+    <tr><td>C-02</td><td>空态折叠而非占位</td><td>✅ 已确认</td><td>空数据 bundle 渲染测试 T-A11</td></tr>
+  </table>
+</section>
+
+<footer style="margin-top:40px;padding-top:16px;border-top:2px solid var(--line);color:var(--muted);font-size:12.5px;">
+  EduDesk Offline · Campus Display MVP · 线框图 v0.1 ｜ 设计交付物，<b>不授权实施</b>。实施须 Owner 单独批准（Gate G-0）。
+</footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EduDesk 校园信息屏</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-profile="classroom">
+  <header class="topbar">
+    <div class="brand">校园信息屏</div>
+    <div class="clockbox">
+      <div class="clock" id="clock">--:--</div>
+      <div class="clock-date" id="clockDate">----</div>
+    </div>
+    <div class="badges">
+      <div class="drift-badge hidden" id="driftBadge" title="终端时钟与服务器不一致">🔕 时钟校准中</div>
+      <div class="status-badge" id="netBadge" data-level="boot">初始化</div>
+    </div>
+  </header>
+
+  <main id="stage" class="stage">
+    <section id="cards" class="cards"></section>
+  </main>
+
+  <footer class="statusline">
+    <span id="syncInfo">同步中…</span>
+    <span id="stateInfo" class="state-tag">S0 BOOT</span>
+  </footer>
+
+  <!-- 全屏覆盖：BLOCKED / DEGRADED / EMPTY / 维护 -->
+  <div id="overlay" class="overlay hidden">
+    <div class="overlay-card">
+      <div class="overlay-icon" id="ovIcon">ⓘ</div>
+      <div class="overlay-title" id="ovTitle"></div>
+      <div class="overlay-text" id="ovText"></div>
+    </div>
+  </div>
+
+  <script src="core.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,103 @@
+{
+  "meta": {
+    "school": "示例学校",
+    "note": "教师内容生产链路 Phase1：服务端唯一写入方。本文件为演示内容源，字段均通过 privacylint 白名单。"
+  },
+  "items": [
+    {
+      "id": "hw-001",
+      "type": "homework",
+      "title": "数学作业",
+      "summary": "练习册P32第1-5题，周五上交。",
+      "audience": {
+        "grade": "高一",
+        "class": "3"
+      },
+      "priority": 2,
+      "published_at": "2026-10-15T09:00:00+08:00",
+      "effective_from": "2026-10-15T09:00:00+08:00",
+      "effective_until": "2026-10-16T18:00:00+08:00",
+      "updated_at": "2026-10-15T09:00:00+08:00",
+      "state": "PUBLISHED"
+    },
+    {
+      "id": "sch-001",
+      "type": "schedule",
+      "title": "今日课表",
+      "summary": "第3节体育调整为自习。",
+      "audience": {
+        "grade": "高一",
+        "class": "3"
+      },
+      "priority": 2,
+      "published_at": "2026-10-15T07:00:00+08:00",
+      "effective_from": "2026-10-15T07:00:00+08:00",
+      "effective_until": "2026-10-15T22:00:00+08:00",
+      "updated_at": "2026-10-15T07:00:00+08:00",
+      "state": "PUBLISHED"
+    },
+    {
+      "id": "evt-001",
+      "type": "event",
+      "title": "校园科技节",
+      "summary": "本周五体育馆举办科技节展览。",
+      "location": "体育馆",
+      "audience": {
+        "grade": "all"
+      },
+      "priority": 1,
+      "published_at": "2026-10-13T10:00:00+08:00",
+      "effective_from": "2026-10-13T10:00:00+08:00",
+      "effective_until": "2026-10-17T18:00:00+08:00",
+      "updated_at": "2026-10-13T10:00:00+08:00",
+      "state": "PUBLISHED"
+    },
+    {
+      "id": "util-001",
+      "type": "utility",
+      "title": "失物招领",
+      "summary": "图书馆拾到蓝色水杯一个，请到传达室认领。",
+      "location": "传达室",
+      "audience": {
+        "grade": "all"
+      },
+      "priority": 3,
+      "published_at": "2026-10-15T11:00:00+08:00",
+      "effective_from": "2026-10-15T11:00:00+08:00",
+      "effective_until": "2026-10-22T11:00:00+08:00",
+      "updated_at": "2026-10-15T11:00:00+08:00",
+      "state": "PUBLISHED"
+    },
+    {
+      "id": "wx-001",
+      "type": "weather",
+      "title": "今日天气",
+      "summary": "晴转多云，18-25℃，东南风3级。",
+      "audience": {
+        "grade": "all"
+      },
+      "priority": 3,
+      "published_at": "2026-10-15T06:30:00+08:00",
+      "effective_from": "2026-10-15T06:30:00+08:00",
+      "effective_until": "2026-10-16T06:30:00+08:00",
+      "updated_at": "2026-10-15T06:30:00+08:00",
+      "state": "PUBLISHED"
+    },
+    {
+      "id": "ann-001",
+      "type": "announcement",
+      "title": "下周一国旗下讲话调整",
+      "summary": "因天气原因，周一升旗仪式改为室内进行。",
+      "audience": {
+        "grade": "all"
+      },
+      "priority": 1,
+      "published_at": "2026-10-14T08:00:00+08:00",
+      "effective_from": "2026-10-14T08:00:00+08:00",
+      "effective_until": "2026-10-20T20:00:00+08:00",
+      "updated_at": "2026-10-14T08:00:00+08:00",
+      "state": "PUBLISHED"
+    }
+  ],
+  "tombstones": []
+}

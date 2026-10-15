@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>终端故障 · EduDesk</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #2b2f36; color: #e8eaed;
+    font-family: "Microsoft YaHei", "Segoe UI", system-ui, sans-serif; cursor: none; }
+  .wrap { height: 100%; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; padding: 4vw; box-sizing: border-box; }
+  .icon { font-size: clamp(48px, 8vw, 120px); line-height: 1; margin-bottom: 3vh; opacity: .9; }
+  h1 { font-size: clamp(28px, 4.2vw, 64px); margin: 0 0 2.4vh; font-weight: 600; letter-spacing: .02em; }
+  p  { font-size: clamp(16px, 1.8vw, 28px); margin: 0; color: #a9b0ba; line-height: 1.7; }
+  .code { margin-top: 4vh; font-family: Consolas, "Courier New", monospace;
+    font-size: clamp(14px, 1.5vw, 22px); color: #7f8791; letter-spacing: .12em; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="icon">⚠️</div>
+    <h1>本终端故障，暂时无法显示</h1>
+    <p>请联系管理员处理，请勿自行操作本设备。</p>
+    <div class="code" id="code">TERMINAL-XXXX-00</div>
+  </div>
+<script>
+  // Terminal id may be supplied as ?terminal=A2F-07 ; never show internal paths or secrets.
+  try {
+    var q = new URLSearchParams(location.search);
+    var t = q.get('terminal');
+    if (t) document.getElementById('code').textContent = 'TERMINAL-' + t;
+  } catch (e) { /* keep default */ }
+</script>
+</body>
+</html>

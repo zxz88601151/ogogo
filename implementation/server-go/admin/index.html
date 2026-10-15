@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EduDesk 教师内容后台</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- 登录页（TP-02） -->
+  <section id="loginView" class="login-wrap">
+    <div class="login-card">
+      <div class="login-brand">EduDesk 教师内容后台</div>
+      <div class="login-sub">内容发布 · 撤回 · 审计留痕</div>
+      <label class="field">
+        <span>账号</span>
+        <input id="username" type="text" autocomplete="username" placeholder="教师账号" />
+      </label>
+      <label class="field">
+        <span>密码</span>
+        <input id="password" type="password" autocomplete="current-password" placeholder="登录密码" />
+      </label>
+      <button id="loginBtn" class="btn primary block">登 录</button>
+      <div id="loginError" class="login-error hidden"></div>
+      <div class="login-note">
+        本系统仅展示校园公共信息，不采集、不存储任何学生个人信息与成绩数据。
+      </div>
+    </div>
+  </section>
+
+  <!-- 主界面 -->
+  <section id="appView" class="app hidden">
+    <header class="topbar">
+      <div class="tb-left">
+        <span class="tb-logo">EduDesk</span>
+        <span class="tb-title">教师内容后台</span>
+      </div>
+      <div class="tb-right">
+        <span id="whoami" class="whoami"></span>
+        <button id="logoutBtn" class="btn ghost">退出</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="toolbar">
+        <button id="newBtn" class="btn primary">+ 新建内容</button>
+        <div class="tb-spacer"></div>
+        <input id="searchInput" class="search" type="search" placeholder="搜索标题 / ID…" />
+        <select id="stateFilter" class="filter">
+          <option value="">全部状态</option>
+          <option value="PUBLISHED">已发布</option>
+          <option value="DRAFT">草稿</option>
+        </select>
+      </div>
+
+      <div id="stats" class="stats"></div>
+
+      <div class="table-wrap">
+        <table class="grid">
+          <thead>
+            <tr>
+              <th>标题</th>
+              <th>类型</th>
+              <th>受众</th>
+              <th>优先级</th>
+              <th>生效</th>
+              <th>失效</th>
+              <th>状态</th>
+              <th class="ops">操作</th>
+            </tr>
+          </thead>
+          <tbody id="itemRows"></tbody>
+        </table>
+        <div id="emptyHint" class="empty hidden">暂无内容，点击右上角「新建内容」开始发布。</div>
+      </div>
+
+      <div class="audit-block">
+        <div class="audit-head">
+          <h3>操作审计（最近 50 条）</h3>
+          <button id="refreshAudit" class="btn ghost small">刷新</button>
+        </div>
+        <div class="audit-list" id="auditList"></div>
+      </div>
+    </main>
+  </section>
+
+  <!-- 编辑抽屉 -->
+  <div id="drawerMask" class="drawer-mask hidden"></div>
+  <aside id="drawer" class="drawer hidden">
+    <div class="drawer-head">
+      <h2 id="drawerTitle">新建内容</h2>
+      <button id="drawerClose" class="btn ghost small">✕</button>
+    </div>
+    <div class="drawer-body">
+      <label class="field">
+        <span>内容类型 <i>*</i></span>
+        <select id="fType"></select>
+      </label>
+      <label class="field">
+        <span>标题 <i>*</i> <em id="titleCount"></em></span>
+        <input id="fTitle" type="text" maxlength="60" placeholder="例：本周五科技节展览" />
+      </label>
+      <label class="field">
+        <span>摘要 / 正文 <em id="summaryCount"></em></span>
+        <textarea id="fSummary" rows="3" placeholder="面向学生的简短说明，避免包含个人信息与成绩"></textarea>
+      </label>
+      <div class="field-row">
+        <label class="field">
+          <span>受众年级 <i>*</i></span>
+          <select id="fGrade">
+            <option value="all">全体</option>
+            <option value="高一">高一</option>
+            <option value="高二">高二</option>
+            <option value="高三">高三</option>
+            <option value="初一">初一</option>
+            <option value="初二">初二</option>
+            <option value="初三">初三</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>班级（可空）</span>
+          <input id="fClass" type="text" placeholder="例：3" />
+        </label>
+      </div>
+      <div class="field-row">
+        <label class="field">
+          <span>位置（走廊屏用）</span>
+          <input id="fLocation" type="text" placeholder="例：体育馆" />
+        </label>
+        <label class="field">
+          <span>优先级</span>
+          <select id="fPriority">
+            <option value="1">1（最高）</option>
+            <option value="2">2（普通）</option>
+            <option value="3">3（最低）</option>
+          </select>
+        </label>
+      </div>
+      <div class="field-row">
+        <label class="field">
+          <span>生效时间</span>
+          <input id="fFrom" type="datetime-local" />
+        </label>
+        <label class="field">
+          <span>失效时间</span>
+          <input id="fUntil" type="datetime-local" />
+        </label>
+      </div>
+      <label class="field">
+        <span>状态</span>
+        <select id="fState">
+          <option value="PUBLISHED">已发布（立即上屏）</option>
+          <option value="DRAFT">草稿（暂不上屏）</option>
+        </select>
+      </label>
+
+      <div id="violations" class="violations hidden"></div>
+    </div>
+    <div class="drawer-foot">
+      <button id="saveBtn" class="btn primary">保存并发布</button>
+      <button id="cancelBtn" class="btn ghost">取消</button>
+    </div>
+  </aside>
+
+  <!-- 撤回确认 -->
+  <div id="confirmMask" class="confirm-mask hidden">
+    <div class="confirm-card">
+      <h3>确认撤回该内容？</h3>
+      <p class="confirm-text">撤回后内容将从所有展示屏<b>立即硬删除</b>，离线终端会在下次同步时清除，且不可恢复。</p>
+      <label class="field">
+        <span>撤回原因（将写入审计）</span>
+        <input id="wdReason" type="text" placeholder="例：信息有误，重新发布" />
+      </label>
+      <div class="confirm-ops">
+        <button id="wdConfirm" class="btn danger">确认撤回</button>
+        <button id="wdCancel" class="btn ghost">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
