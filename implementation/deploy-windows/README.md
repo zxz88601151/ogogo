@@ -38,6 +38,14 @@
 | `04-assigned-access.ps1` | 配置 Windows Assigned Access（Kiosk 锁定） | §1.1、D-06 |
 | `99-uninstall.ps1` | 回滚任务与 Kiosk 配置 | — |
 | `fallback.html` | 连续崩溃后的 FALLBACK 屏（`本终端故障 · TERMINAL-xx`） | §2.1、§4.2 |
+| `watchdog-recovery.cmd` | SCM 恢复策略第 3 次失败动作：留证 + 尝试重启服务（纯 ASCII，cmd 按 OEM 码页读取） | §2.1 第 4 行 |
+
+> **看门狗服务（推荐方式）**：`EduDeskWatchdogSvc` 已实现为**真实 Windows 服务**
+> （`implementation/server-go/cmd/edudesk-watchdog/`），比本套件里的
+> `edudesk-launcher.ps1` 内嵌看门狗更可靠：脚本被杀则看护中断，
+> 而服务由 SCM 托管、支持失败恢复策略。
+> 安装：`edudesk-watchdog.exe install -exe "<abs>\edudesk.exe" -args "-addr :8080" -recovery "<abs>\deploy-windows\watchdog-recovery.cmd"`。
+> 详见 `implementation/server-go/cmd/edudesk-watchdog/README.md`。
 
 ---
 

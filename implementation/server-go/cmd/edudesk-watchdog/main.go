@@ -58,6 +58,10 @@ func main() {
 		err = cmdInstall(rest)
 	case "uninstall":
 		err = cmdUninstall()
+	case "start":
+		err = cmdStartStop(true)
+	case "stop":
+		err = cmdStartStop(false)
 	case "status":
 		err = cmdStatus()
 	case "debug":
@@ -82,8 +86,10 @@ usage:
   edudesk-watchdog install   -exe <path> [-args "<a b c>"] [-workdir <dir>]
                              [-code TERMINAL-01] [-tick 2] [-recovery <script>]
   edudesk-watchdog uninstall
+  edudesk-watchdog start
+  edudesk-watchdog stop
   edudesk-watchdog status
-  edudesk-watchdog debug     [-config <path>]
+  edudesk-watchdog debug     [-config <path>] [-exe <path>] [-args "<a b>"] [-code C]
   edudesk-watchdog run        (invoked by SCM)
 `)
 }
@@ -217,6 +223,13 @@ func cmdInstall(args []string) error {
 		*workdir = filepath.Dir(absExe)
 	}
 
+	// 路径规范化：从 Git Bash / MSYS 传参时，反斜杠与正斜杠可能被混用成
+	// `C://Users//x` 这类形式，直接写进 SCM 的 recovery command 会导致脚本无法执行。
+	// 统一 Clean + FromSlash 成合法 Windows 路径。
+	if *recovery != "" {
+		*recovery = filepath.Clean(filepath.FromSlash(*recovery))
+	}
+
 	// 1) 写配置
 	cfg := Config{
 		ExePath:        absExe,
@@ -254,9 +267,12 @@ func cmdInstall(args []string) error {
 
 	s, err := m.OpenService(serviceName)
 	if err == nil {
-		// 已存在：更新配置后重启即可
-		s.Close()
-		fmt.Println("service already exists; updating recovery policy")
+		// 服务已存在：**复用同一句柄**继续更新恢复策略。
+		// 注意：这里绝不能提前 s.Close() —— 关闭后再调用 SetRecoveryActions /
+		// SetRecoveryCommand / Start 会因句柄失效而报「句柄无效」，
+		// 导致「配置更新失败但脚本仍打印 installed」的静默错误。
+		defer s.Close()
+		fmt.Println("service already exists; updating config and recovery policy")
 	} else {
 		s, err = m.CreateService(serviceName, self, mgr.Config{
 			StartType:        mgr.StartAutomatic,
@@ -340,6 +356,54 @@ func cmdUninstall() error {
 	}
 	fmt.Println("service removed:", serviceName)
 	fmt.Println("note: config/heartbeat/log files kept at", heartbeat.Dir())
+	return nil
+}
+
+// cmdStartStop 启停服务。
+//
+// 为什么不直接用 sc.exe：部分受管环境把 sc.exe 列入程序黑名单，
+// 运维无法调用。提供内建子命令可绕开该限制，也更适合写进 Runbook。
+func cmdStartStop(start bool) error {
+	if !isElevated() {
+		return errors.New("administrator privileges required to control a Windows service")
+	}
+	m, err := mgr.Connect()
+	if err != nil {
+		return fmt.Errorf("connect SCM: %w", err)
+	}
+	defer m.Disconnect()
+
+	s, err := m.OpenService(serviceName)
+	if err != nil {
+		return fmt.Errorf("service %s not installed: %w", serviceName, err)
+	}
+	defer s.Close()
+
+	if start {
+		if err := s.Start(); err != nil {
+			return err
+		}
+		fmt.Println("service start requested:", serviceName)
+		return nil
+	}
+
+	if _, err := s.Control(svc.Stop); err != nil {
+		return err
+	}
+	// 等待真正停止（SCM 是异步的）
+	for i := 0; i < 30; i++ {
+		time.Sleep(300 * time.Millisecond)
+		st, err := s.Query()
+		if err != nil {
+			break
+		}
+		if st.State == svc.Stopped {
+			fmt.Println("service stopped:", serviceName)
+			fmt.Println("note: the display process is intentionally NOT terminated")
+			return nil
+		}
+	}
+	fmt.Println("service stop requested (still pending)")
 	return nil
 }
 

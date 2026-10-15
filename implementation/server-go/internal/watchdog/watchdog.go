@@ -105,6 +105,7 @@ type EventKind string
 
 const (
 	EvStarted     EventKind = "STARTED"       // 拉起成功
+	EvAdopted     EventKind = "ADOPTED"       // 接管已在运行且心跳健康的主进程
 	EvStartFailed EventKind = "START_FAILED"  // 拉起失败
 	EvCrash       EventKind = "CRASH"         // 检测到进程消失
 	EvHang        EventKind = "HANG"          // 心跳超时（进程仍在）
@@ -168,12 +169,27 @@ func (s *Supervisor) FallbackAt() time.Time { return s.fallbackAt }
 // Step 推进一次监督循环。
 //
 // hbFresh 表示心跳是否新鲜；hbPID 是心跳文件里记录的 PID（0 表示读不到）。
+// 两者用于「接管」判定：服务重启后若已有健康主进程，应先接管而非重复拉起。
 // 返回本次产生的事件（可能为 nil）。
 func (s *Supervisor) Step(hbFresh bool, hbPID int) *Event {
 	now := s.opt.Now()
 
 	switch s.state {
 	case StateDown:
+		// 接管（Adoption）：若心跳文件指向一个**仍然存活且心跳新鲜**的进程，
+		// 说明主进程正在健康运行，只是本监督器刚启动（服务重启、服务恢复策略
+		// 重启服务、就地升级等场景）。
+		//
+		// 此时若盲目再拉起一个实例，会与既有实例争抢监听端口，导致新实例启动
+		// 即失败并被判为崩溃，反复几次后触发 FALLBACK —— 把本来健康的终端打黑。
+		// 因此必须先接管、后启动。
+		if hbPID > 0 && hbFresh && s.runner.Alive(hbPID) {
+			s.pid = hbPID
+			s.startedAt = now
+			s.state = StateRunning
+			ev := s.emit(EvAdopted, now, "adopted live process from heartbeat")
+			return &ev
+		}
 		return s.start(now, "initial")
 
 	case StateRunning:

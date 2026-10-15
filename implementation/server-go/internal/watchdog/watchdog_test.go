@@ -261,3 +261,61 @@ func TestEventCallbackFires(t *testing.T) {
 		t.Fatalf("事件序列异常: %v", kinds)
 	}
 }
+
+// ------------------------------------------------------------------
+// 接管（Adoption）：服务重启后不得重复拉起已在健康运行的主进程。
+//
+// 反例后果：新实例与既有实例争抢端口 -> 启动即失败 -> 被判崩溃 ->
+// 反复数次触发 FALLBACK，把本来健康的终端打黑。
+// ------------------------------------------------------------------
+
+func TestAdoptHealthyExistingProcess(t *testing.T) {
+	sup, r, _ := newSup(t)
+	r.alive[7777] = true // 已有一个健康进程
+
+	ev := sup.Step(true, 7777) // 心跳新鲜且 pid 存活
+	if ev == nil || ev.Kind != EvAdopted {
+		t.Fatalf("应产生 ADOPTED，实际 %v", ev)
+	}
+	if sup.PID() != 7777 {
+		t.Fatalf("应接管 pid=7777，实际 %d", sup.PID())
+	}
+	if sup.State() != StateRunning {
+		t.Fatalf("接管后应为 RUNNING，实际 %s", sup.State())
+	}
+	if r.starts != 0 {
+		t.Fatalf("接管场景不得重复拉起，实际启动 %d 次", r.starts)
+	}
+
+	// 接管后应正常监控：进程消失 -> 重启
+	delete(r.alive, 7777)
+	ev = sup.Step(false, 7777)
+	if ev == nil || ev.Kind != EvStarted {
+		t.Fatalf("接管后进程消失应重启，实际 %v", ev)
+	}
+}
+
+func TestNoAdoptWhenHeartbeatStale(t *testing.T) {
+	sup, r, _ := newSup(t)
+	r.alive[7777] = true
+
+	ev := sup.Step(false, 7777) // 进程在但心跳陈旧
+	if ev == nil || ev.Kind != EvStarted {
+		t.Fatalf("心跳陈旧不应接管，应冷启动，实际 %v", ev)
+	}
+	if r.starts != 1 {
+		t.Fatalf("应启动 1 次，实际 %d", r.starts)
+	}
+}
+
+func TestNoAdoptWhenProcessGone(t *testing.T) {
+	sup, r, _ := newSup(t)
+	// 心跳新鲜但指向的进程已不存在（例如 pid 复用/进程刚退出）
+	ev := sup.Step(true, 9999)
+	if ev == nil || ev.Kind != EvStarted {
+		t.Fatalf("进程不存在不应接管，应冷启动，实际 %v", ev)
+	}
+	if r.starts != 1 {
+		t.Fatalf("应启动 1 次，实际 %d", r.starts)
+	}
+}

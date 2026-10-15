@@ -63,6 +63,26 @@ go build -o edudesk ./cmd/edudesk
 go run ./cmd/genuser <username> <password> <displayName> <role>
 ```
 
+### 2.1 服务化运行与看门狗（设计 05 §2.1）
+
+主进程每 5 s 写一次心跳（`%ProgramData%\EduDesk\heartbeat.json`），由
+`EduDeskWatchdogSvc` 以 **Windows 服务**形态守护：
+
+- 心跳超时 **15 s**（进程仍在但卡死）→ kill + restart；
+- 进程消失 → 立即重启（实测恢复 **1.71–1.77 s**，设计目标 5 s）；
+- 5 min 内连续 **3 次**崩溃 → 停止重启循环 + 进入 FALLBACK
+  （写 `terminal-state.json` 与本地日志，防重启风暴）；
+- 服务自身故障 → 由 Windows 服务恢复策略接管（重启 ×2，第 3 次运行恢复脚本）。
+
+```powershell
+go build -o edudesk-watchdog.exe ./cmd/edudesk-watchdog
+.\edudesk-watchdog.exe install -exe "<abs>\edudesk.exe" -args "-addr :8080" -code TERMINAL-01
+.\edudesk-watchdog.exe status      # 服务状态 + 恢复策略 + 心跳 + 终端状态
+```
+
+完整说明（设计映射、实测证据、与设计的偏差项）见
+[`cmd/edudesk-watchdog/README.md`](cmd/edudesk-watchdog/README.md)。
+
 ## 3. 只读边界（设计 04）
 
 展示侧端点**仅接受 GET/HEAD**，任何写方法返回 `405` 且带 `Allow: GET, HEAD`：
@@ -132,7 +152,7 @@ curl -i -X POST http://127.0.0.1:8080/bundle
 # Go 单元测试
 go test ./...
 
-# 终端核心逻辑单元测试（F-2 / F-3，32 条）
+# 终端核心逻辑单元测试（F-2 / F-3，38 条）
 cd ../ && node tests/core.test.js
 ```
 
@@ -144,6 +164,9 @@ cd ../ && node tests/core.test.js
 - `auth`：登录成败、令牌篡改/过期、预留角色登录拒绝、发布权限矩阵；
 - `validate`：8 类禁止内容、长度、类型白名单、时间顺序、ID 字符集；
 - `store`：快照深拷贝、事务落盘、失败回滚、撤回留痕；
+- `watchdog`（12 条）：崩溃重启、心跳超时 kill+重启、启动宽限、
+  5 min 内 3 次崩溃 → FALLBACK、窗口外崩溃不计入、冷却重试、
+  **接管已在运行的健康主进程**（服务重启场景）；
 - `core.test.js`：300s 宽限边界、72h 硬 BLOCKED 边界、三态时效一致性、
   撤回记忆不可逆、跨重启不再展示已撤回项。
 
