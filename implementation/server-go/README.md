@@ -176,7 +176,17 @@ go test ./...
 
 # 终端核心逻辑单元测试（F-2 / F-3，38 条）
 cd ../ && node tests/core.test.js
+
+# 运行态冒烟测试（需服务已在运行；只发 GET/HEAD 与"应被拒绝"的写请求，无副作用）
+cd .. && node tests/live-smoke.js
+# 指定目标与密钥：
+#   EDUDESK_BASE=http://127.0.0.1:8080 EDUDESK_SECRET=<secret> node tests/live-smoke.js
 ```
+
+`live-smoke.js` 与单元测试的分工：单元测试验证**纯逻辑**，
+冒烟测试验证**真实进程暴露出来的契约**——跨语言验签、只读边界、
+数据防火墙的管辖范围、心跳与 `/health` 的 PID 一致性。
+退出码非 0 即表示运行实例存在契约偏差，禁止放行。
 
 覆盖要点：
 

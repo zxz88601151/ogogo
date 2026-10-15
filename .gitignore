@@ -29,6 +29,10 @@ server-go/tls/
 *.pfx
 *.p12
 
+# ---- 冒烟测试的临时数据副本（live-smoke / admin-flow 运行时生成）----
+# 内含 users.json 副本与测试写入的内容源，禁止入库。
+.smoke-data/
+
 # ---- Node（仅 archive/server-node 历史对照）----
 node_modules/
 npm-debug.log*
