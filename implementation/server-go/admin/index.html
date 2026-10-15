@@ -41,7 +41,7 @@
       </div>
     </header>
 
-    <main class="content">
+    <main class="content" id="workbench">
       <div class="toolbar">
         <button id="newBtn" class="btn primary">+ 新建内容</button>
         <div class="tb-spacer"></div>
@@ -82,6 +82,26 @@
         <div class="audit-list" id="auditList"></div>
       </div>
     </main>
+
+    <!--
+      非内容角色说明面板。
+      设计依据：ADR-018「MVP 最高活跃权限为教师」；01 §1.1 把终端运维定义为
+      「装机、配 device_id、看状态屏 —— 本地物理访问，非 UI 访问」。
+      因此这类角色登录成功后**没有**任何 web 内容操作能力，后台必须明确告知，
+      而不是让用户面对一片 403/空白以为系统故障。
+      服务端对应实现：cmd/edudesk/main.go 的 requirePublisher（内容类端点）
+      与 requireSession（仅认证）。
+    -->
+    <section id="noAccessView" class="no-access hidden">
+      <h2>本账号不提供内容后台操作</h2>
+      <p id="noAccessReason" class="no-access-reason"></p>
+      <ul class="no-access-list">
+        <li><b>内容发布 / 撤回</b>：由<b>教师</b>账号登录本后台操作。本版本以教师为最高活跃权限，不设置凌驾其上的内容管理员角色。</li>
+        <li><b>终端运维</b>（装机、配置 device_id、查看状态屏）：按设计在<b>终端本地物理访问</b>完成，不通过 Web 后台。</li>
+        <li><b>教务处等预留角色</b>：权限与功能定义已就位，但本版本不激活。</li>
+      </ul>
+      <p class="no-access-hint">如需发布内容，请改用教师账号登录。若角色分配有误，请联系终端管理员。</p>
+    </section>
   </section>
 
   <!-- 编辑抽屉 -->

@@ -272,13 +272,32 @@ func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "revoked": true})
 }
 
-// requireAuth 校验登录态 + 发布权限（API 授权关 + 发布入口关）。
-func (s *server) requireAuth(w http.ResponseWriter, r *http.Request) (*auth.Session, bool) {
-	token := bearer(r)
-	sess, err := s.users.Verify(token)
+// requireSession 只做**认证**：令牌有效、账号仍启用、角色仍激活。
+//
+// 它**不**判断角色能做什么 —— 认证（你是谁）与授权（你能做什么）必须分开。
+// 各端点用哪个函数必须显式选择，不得把授权条件藏进通用认证里。
+func (s *server) requireSession(w http.ResponseWriter, r *http.Request) (*auth.Session, bool) {
+	sess, err := s.users.Verify(bearer(r))
 	if err != nil {
-		code := http.StatusUnauthorized
-		writeJSON(w, code, map[string]interface{}{"error": err.Error()})
+		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"error": err.Error()})
+		return nil, false
+	}
+	return sess, true
+}
+
+// requirePublisher 在认证之上叠加**内容发布授权**（ADR-018：MVP 最高活跃权限为教师）。
+//
+// 为什么单列成函数而不是塞进 requireSession：
+// 之前把 CanPublish 内嵌进通用认证函数，导致 admin（终端运维角色，
+// 01 §1.1 定义为"装机、配 device_id、看状态屏 —— 本地物理访问，非 UI 访问"）
+// 登录后连 GET /admin/api/audit 这类**只读**请求都被 403：
+//   - 语义错误：认证失败(401)与授权不足(403)被混成一个出口；
+//   - 角色僵尸：admin 能登录却没有任何可用端点，看起来像系统故障；
+//   - 会静默传染：以后新增任何端点都会被动继承这条隐含授权。
+// 现在认证归 requireSession，授权由每个端点显式声明。
+func (s *server) requirePublisher(w http.ResponseWriter, r *http.Request) (*auth.Session, bool) {
+	sess, ok := s.requireSession(w, r)
+	if !ok {
 		return nil, false
 	}
 	if !auth.CanPublish(sess.Role) {
@@ -294,10 +313,11 @@ func (s *server) requireAuth(w http.ResponseWriter, r *http.Request) (*auth.Sess
 	return sess, true
 }
 
+// handleSession 任何已登录角色都可调用：它只回答"我是谁、我是什么角色"，
+// 是后台 UI 判断该渲染内容工作台还是"无 web 操作能力"说明页的依据。
 func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
-	sess, err := s.users.Verify(bearer(r))
-	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"error": err.Error()})
+	sess, ok := s.requireSession(w, r)
+	if !ok {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"session": sess})
@@ -305,7 +325,7 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 
 // handleMeta 返回后台表单所需的元信息（允许类型、优先级、长度上限等）。
 func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireAuth(w, r); !ok {
+	if _, ok := s.requirePublisher(w, r); !ok {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -321,7 +341,7 @@ func (s *server) handleMeta(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleListItems(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireAuth(w, r); !ok {
+	if _, ok := s.requirePublisher(w, r); !ok {
 		return
 	}
 	src := s.content.Snapshot()
@@ -332,7 +352,7 @@ func (s *server) handleListItems(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleCreateItem(w http.ResponseWriter, r *http.Request) {
-	sess, ok := s.requireAuth(w, r)
+	sess, ok := s.requirePublisher(w, r)
 	if !ok {
 		return
 	}
@@ -386,7 +406,7 @@ func (s *server) handleCreateItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleUpdateItem(w http.ResponseWriter, r *http.Request) {
-	sess, ok := s.requireAuth(w, r)
+	sess, ok := s.requirePublisher(w, r)
 	if !ok {
 		return
 	}
@@ -439,7 +459,7 @@ func (s *server) handleUpdateItem(w http.ResponseWriter, r *http.Request) {
 
 // handleWithdrawItem 撤回：硬删除 + tombstone（ADR-007）。
 func (s *server) handleWithdrawItem(w http.ResponseWriter, r *http.Request) {
-	sess, ok := s.requireAuth(w, r)
+	sess, ok := s.requirePublisher(w, r)
 	if !ok {
 		return
 	}
@@ -474,7 +494,7 @@ func (s *server) handleWithdrawItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleAuditTail(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireAuth(w, r); !ok {
+	if _, ok := s.requirePublisher(w, r); !ok {
 		return
 	}
 	n := 100

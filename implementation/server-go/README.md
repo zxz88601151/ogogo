@@ -79,6 +79,34 @@ TLS 二选一：原生 `-tls-cert/-tls-key`，或反向代理（样例见
 | `admin01` | `Admin@2026` | admin | 仅终端运维，**无内容发布权** |
 | `academic01` | `Acad@2026` | academic_offices | 预留角色，**登录即拒** |
 
+### 角色能力矩阵（授权层实证）
+
+闸门在服务端，前端隐藏只是 UX。两个函数分工明确、**不得合并**：
+
+- `requireSession` —— 只做认证（令牌有效 / 账号启用 / 角色激活）；
+- `requirePublisher` —— 认证之上叠加内容发布授权（`auth.CanPublish`，**仅 teacher**）。
+
+| 端点 | 所需层 | teacher | admin | academic_offices |
+|------|--------|---------|-------|------------------|
+| `POST /admin/api/login` | 无 | ✅ | ✅ | ❌ 401（预留不激活） |
+| `GET /admin/api/session` | `requireSession` | ✅ 200 | ✅ 200 | ❌ 401 |
+| `GET /admin/api/items` | `requirePublisher` | ✅ 200 | ❌ 403 | ❌ 401 |
+| `POST /admin/api/items` | `requirePublisher` | ✅ 201 | ❌ 403 | ❌ 401 |
+| `PUT /admin/api/items/{id}` | `requirePublisher` | ✅ 200 | ❌ 403 | ❌ 401 |
+| `POST /admin/api/items/{id}/withdraw` | `requirePublisher` | ✅ 200 | ❌ 403 | ❌ 401 |
+| `GET /admin/api/audit` | `requirePublisher` | ✅ 200 | ❌ 403 | ❌ 401 |
+| `GET /admin/api/meta` | `requirePublisher` | ✅ 200 | ❌ 403 | ❌ 401 |
+| `GET /bundle`、`GET /health` | 无（只读开放） | ✅ | ✅ | ✅ |
+
+> **为什么 admin 一个内容端点都进不去**：这不是权限缺失，而是设计选择。
+> ADR-018 规定 MVP 最高活跃权限为教师，不设凌驾其上的内容管理员；
+> `01 §1.1` 把终端运维定义为「装机、配 device_id、看状态屏 —— **本地物理访问，非 UI 访问**」。
+> 因此 admin 登录后的正确语义是"已认证、无 web 操作能力"，后台会直接展示说明页
+> 而不是让用户面对一片 403 空白。
+>
+> 若将来要给 admin 增加 web 能力（例如只读的终端运维视图），**必须先改设计**
+> （`01 §1.1` / ADR-018），再动 `requirePublisher` 的绑定，不要只改代码。
+
 生成新用户口令哈希：
 
 ```bash

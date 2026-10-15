@@ -118,10 +118,44 @@ function logout() {
 }
 
 // ---------------- 主流程 ----------------
+//
+// 角色 → 展示名。与服务端 auth.Role 对齐。
+const ROLE_LABEL = {
+  teacher: '教师',
+  admin: '终端运维',
+  academic_offices: '教务处',
+};
+
+// canPublish 与服务端 auth.CanPublish 对齐（ADR-018：仅 teacher）。
+// 前端据此决定渲染内容工作台还是"无 web 操作能力"说明页 ——
+// 这只是 UX 便利，真正的闸门在服务端 requirePublisher。
+function canPublish() {
+  return !!state.session && state.session.role === 'teacher';
+}
+
 async function enterApp() {
   $('loginView').classList.add('hidden');
   $('appView').classList.remove('hidden');
-  $('whoami').innerHTML = `教师 <b>${escapeHtml(state.session.display_name || state.session.username)}</b>　·　${escapeHtml(state.session.username)}`;
+
+  const sess = state.session || {};
+  const role = sess.role || '';
+  const label = ROLE_LABEL[role] || role || '未知角色';
+  // 之前这里把角色硬编码成"教师"，admin 登录也会显示"教师 xxx"，属错误展示。
+  $('whoami').innerHTML =
+    `${escapeHtml(label)} <b>${escapeHtml(sess.display_name || sess.username)}</b>　·　${escapeHtml(sess.username)}`;
+
+  if (!canPublish()) {
+    // 非内容角色：不发起必然 403 的请求，直接给出说明。
+    // 依据：01 §1.1 终端运维为"本地物理访问，非 UI 访问"；ADR-018 教师为最高活跃权限。
+    $('workbench').classList.add('hidden');
+    $('noAccessView').classList.remove('hidden');
+    $('noAccessReason').textContent =
+      `当前角色「${label}」不具备内容发布权限，因此本后台不提供内容操作入口。`;
+    return;
+  }
+
+  $('workbench').classList.remove('hidden');
+  $('noAccessView').classList.add('hidden');
   await Promise.all([loadMeta(), loadItems(), loadAudit()]);
 }
 
