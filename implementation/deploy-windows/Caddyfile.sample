@@ -1,0 +1,66 @@
+# EduDesk Offline - reverse proxy sample (patch plan P1-9, option A)
+#
+# Design README says "put it behind a TLS reverse proxy" but shipped no config.
+# This is that config. Option B is the server's own -tls-cert/-tls-key flags;
+# pick one, not both.
+#
+# Why bother on a LAN-only deployment:
+#   * the bundle carries a signature and the terminal enforces it, but the
+#     teacher login POST /admin/api/login sends a password - plaintext on the
+#     wire means anyone on the school network can read it;
+#   * browser Web Crypto refuses crypto.subtle on insecure origins, so an
+#     https-only terminal policy is easier to enforce than to explain.
+#
+# Install (Windows):
+#   caddy.exe run --config Caddyfile.sample --adapter caddyfile
+#   caddy.exe service install   # run as a service, if you want it managed
+
+{
+	# Use the org's own CA / DN if this proxy is reachable from the internet.
+	# For an intranet-only screen fleet, Caddy's internal CA is enough - but the
+	# terminal machine must then trust it, which is a provisioning step (see
+	# 04-assigned-access.ps1 comments), not a config tweak.
+	# auto_https disable_redirects
+}
+
+edudesk.school.lan {
+	tls internal
+
+	# ---- read-only display API -------------------------------------------------
+	# Cache-Control: no-store is already set by the Go server; do not override it,
+	# and never let an intermediary cache a signed bundle.
+	@bundle path /bundle /health
+	handle @bundle {
+		reverse_proxy 127.0.0.1:8080 {
+			header_up X-Real-IP {remote_host}
+			# Keep this short: the terminal polls every 60s and a hung upstream
+			# should surface as STALE, not as a browser spinner.
+			transport http {
+				dial_timeout 3s
+				response_header_timeout 10s
+			}
+		}
+	}
+
+	# ---- teacher back office (write side) -------------------------------------
+	@admin path /admin /admin/*
+	handle @admin {
+		reverse_proxy 127.0.0.1:8080 {
+			# Rate limiting lives in the app (P1-8); make sure the real client IP
+			# reaches it, otherwise every teacher behind one NAT looks like one IP
+			# and the lockout will fire on innocent users.
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	# ---- terminal static assets ------------------------------------------------
+	handle {
+		reverse_proxy 127.0.0.1:8080
+	}
+
+	log {
+		output file C:\ProgramData\EduDesk\caddy-access.log
+		format console
+	}
+}

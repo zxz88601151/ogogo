@@ -1,0 +1,10 @@
+{
+  "_comment": "现场终端配置（由 terminal-config.template.json 复制而来）。校验：deploy-windows\\06-validate-terminal-config.ps1；启动：deploy-windows\\edudesk-launcher.ps1 -Config <本文件>",
+  "terminal_id": "DEV-00",
+  "profile": "classroom",
+  "server_url": "http://127.0.0.1:8080",
+  "poll_sec": 60,
+  "kiosk": true,
+  "location": "开发机（未上屏）",
+  "expected_profiles": []
+}

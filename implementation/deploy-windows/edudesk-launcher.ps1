@@ -16,6 +16,17 @@
   Usage:
     .\edudesk-launcher.ps1 -Profile classroom -TerminalId A2F-07
     .\edudesk-launcher.ps1 -Profile corridor  -TerminalId B1-02
+    .\edudesk-launcher.ps1 -Config ..\server-go\data\terminal-config.json
+
+  Config (P1-11):
+    -Config reads terminal-config.json so that profile / terminal id / port live in
+    one validated file rather than in a scheduled-task argument string.
+
+  Signing secret (P0-1):
+    If EDUDESK_SECRET is a strong value (>= 32 chars) it is handed to the server.
+    Otherwise the launcher starts the server in --dev mode and logs a loud warning:
+    a display that refuses to boot is worse than a demo secret on an unprovisioned
+    box. The *gate* against shipping a demo secret is preflight.ps1, not the runtime.
 #>
 param(
     [ValidateSet('classroom', 'corridor')]
@@ -25,7 +36,9 @@ param(
     [int]$Port = 8080,
     [int]$HealthIntervalSec = 15,
     [int]$HeartbeatEverySec = 28800,   # 8h, design W-09
-    [string]$Secret = 'dev-only-secret-change-me'
+    [string]$Secret = '',
+    [string]$Config = '',
+    [string]$ServerUrl = ''
 )
 
 $ErrorActionPreference = 'Continue'
@@ -34,7 +47,25 @@ $srvDir  = Join-Path (Split-Path -Parent $root) 'server-go'
 $srvExe  = Join-Path $srvDir 'edudesk.exe'
 $logDir  = Join-Path $root 'logs'
 $logFile = Join-Path $logDir ("launcher-{0:yyyyMMdd}.log" -f (Get-Date))
-$base    = "http://127.0.0.1:$Port"
+
+# ---- P1-11: load terminal-config.json if provided ---------------------------
+if ($Config -ne '') {
+    if (-not (Test-Path $Config)) {
+        Write-Host ("FATAL: -Config not found: {0}" -f $Config) -ForegroundColor Red
+        exit 1
+    }
+    try {
+        $cfgObj = Get-Content -Raw -Path $Config -Encoding UTF8 | ConvertFrom-Json
+        if ($cfgObj.profile)    { $Profile    = $cfgObj.profile }
+        if ($cfgObj.terminal_id){ $TerminalId = $cfgObj.terminal_id }
+        if ($cfgObj.server_url) { $ServerUrl  = $cfgObj.server_url }
+    } catch {
+        Write-Host ("FATAL: -Config is not valid JSON: {0}" -f $_.Exception.Message) -ForegroundColor Red
+        exit 1
+    }
+}
+if ($ServerUrl -eq '') { $ServerUrl = "http://127.0.0.1:$Port" }
+$base = $ServerUrl.TrimEnd('/')
 
 if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
 
@@ -63,9 +94,30 @@ function Start-Server {
         Write-Log "FATAL: server exe not found at $srvExe"
         return $false
     }
-    Write-Log "starting server: $srvExe -addr :$Port"
+    # Only the local-server topology starts a process here. When -Config points at a
+    # LAN server (P1-9 / multi-terminal), there is nothing local to launch.
+    if ($base -notmatch '^https?://(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$') {
+        Write-Log "INFO: server_url is remote ($base); not starting a local server"
+        return $false
+    }
+
+    # ---- P0-1 secret contract ----
+    $effectiveSecret = $Secret
+    if ($effectiveSecret -eq '') { $effectiveSecret = $env:EDUDESK_SECRET }
+    $argList = @('-addr', ":$Port", '-web', $srvDir)
+    if ($effectiveSecret -ne '' -and $effectiveSecret.Length -ge 32 -and $effectiveSecret -ne 'dev-only-secret-change-me') {
+        $argList += @('-secret', $effectiveSecret)
+        Write-Log ("starting server: {0} -addr :{1}  [production secret, {2} bytes]" -f $srvExe, $Port, $effectiveSecret.Length)
+    } else {
+        # Degrade with a loud warning instead of refusing to boot: a black corridor
+        # screen is a worse outcome than a demo secret on a not-yet-provisioned box.
+        # preflight.ps1 is the gate that blocks this from reaching go-live.
+        $argList += @('-dev')
+        Write-Log 'WARNING: no strong EDUDESK_SECRET -> starting server with --dev (demo secret). DO NOT go live in this mode.'
+    }
+
     Start-Process -FilePath $srvExe `
-        -ArgumentList @('-addr', ":$Port", '-secret', $Secret) `
+        -ArgumentList $argList `
         -WorkingDirectory $srvDir -WindowStyle Hidden | Out-Null
     # wait up to 30s for health
     for ($i = 0; $i -lt 30; $i++) {
@@ -123,7 +175,7 @@ function Show-Fallback {
 }
 
 # ---------------- main ----------------
-Write-Log "=== EduDesk launcher start (profile=$Profile terminal=$TerminalId) ==="
+Write-Log "=== EduDesk launcher start (profile=$Profile terminal=$TerminalId server=$base) ==="
 
 if (-not (Test-Health)) { Start-Server | Out-Null }
 else { Write-Log 'server already healthy; reusing' }

@@ -22,7 +22,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -40,6 +42,7 @@ var (
 	ErrInvalidCredentials = errors.New("账号或密码不正确")
 	ErrTokenInvalid       = errors.New("登录状态无效，请重新登录")
 	ErrTokenExpired       = errors.New("登录已过期，请重新登录")
+	ErrTokenRevoked       = errors.New("登录状态已注销，请重新登录")
 	ErrRoleNotActivated   = errors.New("该角色在本版本未开放")
 	ErrForbidden          = errors.New("没有执行该操作的权限")
 )
@@ -55,6 +58,8 @@ type User struct {
 
 // Session 会话。
 type Session struct {
+	// TokenID（jti）令牌唯一编号：撤回清单以它为键，与令牌签名互不依赖。
+	TokenID     string    `json:"jti"`
 	Username    string    `json:"username"`
 	DisplayName string    `json:"display_name"`
 	Role        Role      `json:"role"`
@@ -65,17 +70,54 @@ type Session struct {
 // TokenTtl 会话有效期（G-4 建议值，需校方签字；此处为技术默认）。
 const TokenTtl = 8 * time.Hour
 
+// MinSecretLen 生产密钥最小长度（P0-1 fail-closed 红线）。
+const MinSecretLen = 32
+
+// ErrWeakSecret 密钥不合规（缺失或过短）。
+var ErrWeakSecret = fmt.Errorf("签名密钥不合规：需 ≥%d 字节（请设置 EDUDESK_SECRET，或用 --dev 显式降级）", MinSecretLen)
+
+// SecretOK 校验签名密钥是否达到生产强度。
+//
+// P0-1：默认值 `dev-only-secret-change-me` 一旦被带到生产，等同于把 Bundle 签名私钥公开
+//（终端验签密钥随前端下发，见 implementation/README.md）。因此这里 fail-closed：
+// 密钥缺失或长度不足时由调用方**拒绝启动**，而不是静默降级。
+func SecretOK(secret string) error {
+	if len(secret) < MinSecretLen {
+		return ErrWeakSecret
+	}
+	if secret == DevSecret {
+		return ErrWeakSecret
+	}
+	return nil
+}
+
+// DevSecret 演示密钥（仅供 --dev 本地调试，生产禁止）。
+const DevSecret = "dev-only-secret-change-me"
+
 // Store 用户存储与令牌密钥。
 type Store struct {
 	users    map[string]User
 	secret   []byte
 	tokenTTL time.Duration
-	// revoked 记录已登出的令牌 jti 前缀（演示级吊销，生产用 Redis/DB）
-	revoked map[string]bool
+
+	// ---- 令牌吊销清单（P1-7）----
+	// 无状态 HMAC 令牌无法在不查表的情况下提前失效；登出/改密/角色停用必须能立即止损，
+	// 因此维护一份 jti 名单。文件名单即可满足单机 MVP，不必上 Redis。
+	mu      sync.RWMutex
+	revoked map[string]time.Time // jti -> 令牌自身到期时间（到期即可安全淘汰）
+	revPath string               // 空 = 仅内存（测试/演示）
 }
 
-// NewStore 从 users.json 加载用户。
+// NewStore 从 users.json 加载用户（吊销清单仅驻内存）。
 func NewStore(path, secret string) (*Store, error) {
+	return NewStoreWithRevocations(path, secret, "")
+}
+
+// NewStoreWithRevocations 同 NewStore，但把吊销清单持久化到 revPath。
+//
+// 持久化的意义：服务重启不能让已登出的令牌"复活"。重启后清单从磁盘恢复，
+// 已过期的条目顺带淘汰，避免文件无限增长。
+func NewStoreWithRevocations(path, secret, revPath string) (*Store, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("读取用户文件失败: %w", err)
@@ -89,14 +131,108 @@ func NewStore(path, secret string) (*Store, error) {
 		m[u.Username] = u
 	}
 	if secret == "" {
-		secret = "dev-only-secret-change-me"
+		secret = DevSecret
 	}
-	return &Store{
+	s := &Store{
 		users:    m,
 		secret:   []byte(secret),
 		tokenTTL: TokenTtl,
-		revoked:  map[string]bool{},
-	}, nil
+		revoked:  map[string]time.Time{},
+		revPath:  revPath,
+	}
+	if revPath != "" {
+		if err := s.loadRevocations(); err != nil {
+			return nil, err
+		}
+	}
+	return s, nil
+}
+
+// loadRevocations 从磁盘恢复吊销清单并淘汰已过期条目。
+func (s *Store) loadRevocations() error {
+	raw, err := os.ReadFile(s.revPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // 首次运行，无清单
+		}
+		return fmt.Errorf("读取吊销清单失败: %w", err)
+	}
+	var stored map[string]time.Time
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		// 清单损坏不能静默忽略：否则"以为吊销了其实没有"，是安全假象。
+		return fmt.Errorf("吊销清单损坏（拒绝启动以免吊销失效）: %w", err)
+	}
+	now := time.Now()
+	for jti, exp := range stored {
+		if exp.After(now) {
+			s.revoked[jti] = exp
+		}
+	}
+	return nil
+}
+
+// flushRevocations 原子落盘（先写临时文件再 rename，避免半写损坏清单）。
+// 调用方必须已持有写锁。
+func (s *Store) flushRevocations() error {
+	if s.revPath == "" {
+		return nil
+	}
+	data, err := json.MarshalIndent(s.revoked, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(s.revPath), 0o755); err != nil {
+		return err
+	}
+	tmp := s.revPath + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, s.revPath)
+}
+
+// Revoke 把令牌加入吊销清单。令牌本身无需有效签名之外的额外信息——jti 取自签名的载荷，
+// 因此这里必须先验签再吊销，防止伪造 jti 把别人踢下线。
+func (s *Store) Revoke(token string) error {
+	sess, err := s.Verify(token)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.revoked[sess.TokenID] = sess.ExpiresAt
+	if err := s.flushRevocations(); err != nil {
+		return fmt.Errorf("吊销清单落盘失败: %w", err)
+	}
+	return nil
+}
+
+// IsRevoked 查询 jti 是否已被吊销。
+func (s *Store) IsRevoked(jti string) bool {
+	if jti == "" {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	exp, ok := s.revoked[jti]
+	if !ok {
+		return false
+	}
+	return exp.After(time.Now())
+}
+
+// RevokedCount 当前有效吊销条目数（供运维/自检）。
+func (s *Store) RevokedCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	now := time.Now()
+	n := 0
+	for _, exp := range s.revoked {
+		if exp.After(now) {
+			n++
+		}
+	}
+	return n
 }
 
 // pbkdf2Sha256 迭代派生（stdlib 无 pbkdf2，使用 HMAC-SHA256 手工实现 PBKDF2）。
@@ -194,6 +330,7 @@ func (s *Store) Login(username, password string) (string, *Session, error) {
 
 	now := time.Now()
 	sess := &Session{
+		TokenID:     newTokenID(),
 		Username:    u.Username,
 		DisplayName: u.DisplayName,
 		Role:        u.Role,
@@ -201,6 +338,15 @@ func (s *Store) Login(username, password string) (string, *Session, error) {
 		ExpiresAt:   now.Add(s.tokenTTL),
 	}
 	return s.sign(sess), sess, nil
+}
+
+// newTokenID 生成 128 位随机 jti（登出吊销的键）。
+func newTokenID() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		panic("随机源不可用: " + err.Error())
+	}
+	return hex.EncodeToString(b)
 }
 
 // sign 签发令牌：base64url(payload).base64url(hmac)。
@@ -237,6 +383,11 @@ func (s *Store) Verify(token string) (*Session, error) {
 	}
 	if time.Now().After(sess.ExpiresAt) {
 		return nil, ErrTokenExpired
+	}
+	// 吊销关：登出/改密/角色停用后令牌必须立即失效（P1-7）。
+	// 放在验签之后：jti 来自已验签的载荷，伪造者无法借吊销清单实施拒绝服务。
+	if s.IsRevoked(sess.TokenID) {
+		return nil, ErrTokenRevoked
 	}
 	// 会话恢复关：角色若已被停用，立即失效（可吊销已登录会话）
 	u, ok := s.users[sess.Username]

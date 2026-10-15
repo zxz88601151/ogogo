@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"flag"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -26,17 +27,24 @@ import (
 	"edudesk/internal/auth"
 	"edudesk/internal/heartbeat"
 	"edudesk/internal/model"
+	"edudesk/internal/ratelimit"
 	"edudesk/internal/store"
 	"edudesk/internal/validate"
 )
 
 var (
 	addr        = flag.String("addr", ":8080", "监听地址")
-	secret      = flag.String("secret", envOr("EDUDESK_SECRET", "dev-only-secret-change-me"), "Bundle 签名密钥")
+	secret      = flag.String("secret", envOr("EDUDESK_SECRET", ""), "Bundle 签名密钥（生产必须 ≥32 字节，或用 --dev 显式降级）")
 	contentPath = flag.String("content", "data/content-source.json", "内容源文件路径")
 	usersPath   = flag.String("users", "data/users.json", "用户文件路径")
 	auditPath   = flag.String("audit", "data/audit.log", "审计日志路径")
+	revPath     = flag.String("revocations", "data/revocations.json", "令牌吊销清单路径")
 	webRoot     = flag.String("web", ".", "静态资源根目录（含 terminal/ 与 admin/）")
+	dev         = flag.Bool("dev", false, "开发模式：允许使用弱/演示密钥（P0-1 fail-closed 的显式逃生门，禁止用于试点与生产）")
+	tlsCert     = flag.String("tls-cert", "", "TLS 证书路径（与 -tls-key 同时提供才启用 HTTPS）")
+	tlsKey      = flag.String("tls-key", "", "TLS 私钥路径")
+	maxFails    = flag.Int("login-max-fails", ratelimit.DefaultMaxFails, "登录失败锁定阈值（P1-8）")
+	lockFor     = flag.Duration("login-lock-for", ratelimit.DefaultLockFor, "触发阈值后的锁定时长（P1-8）")
 )
 
 func envOr(k, def string) string {
@@ -52,10 +60,27 @@ type server struct {
 	audit   *audit.Log
 	secret  string
 	webRoot string
+	loginRL *ratelimit.Limiter
+	// dev 暴露在 /health 上（P0-1）：让 preflight 能判断**正在运行的这个实例**
+	// 是否在用演示密钥。只看环境变量是不够的 —— 服务可能是由某个还带着 --dev 的
+	// 计划任务或服务配置拉起来的，环境变量里什么都看不到。
+	dev bool
 }
 
 func main() {
 	flag.Parse()
+
+	// ---- P0-1 密钥 fail-closed ----
+	// 顺序刻意放在心跳之前：被拒启动的进程不应留下心跳文件，
+	// 否则看门狗会误判"主进程只是卡住了"而反复拉起。
+	if *dev {
+		if *secret == "" {
+			*secret = auth.DevSecret
+		}
+		log.Printf("[警告] --dev 已启用：正在使用弱/演示密钥，仅限本机调试，禁止用于试点或生产")
+	} else if err := auth.SecretOK(*secret); err != nil {
+		log.Fatalf("拒绝启动：%v", err)
+	}
 
 	// 心跳：每 5s 落盘一次，供 EduDeskWatchdogSvc 判定本进程存活（设计 05 §2.1）。
 	// 心跳是**旁路信号**：写入失败不阻塞主服务，只在 stderr 提示。
@@ -67,7 +92,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("加载内容源失败: %v", err)
 	}
-	us, err := auth.NewStore(*usersPath, *secret)
+	us, err := auth.NewStoreWithRevocations(*usersPath, *secret, *revPath)
 	if err != nil {
 		log.Fatalf("加载用户失败: %v", err)
 	}
@@ -76,7 +101,11 @@ func main() {
 		log.Fatalf("初始化审计日志失败: %v", err)
 	}
 
-	s := &server{content: cs, users: us, audit: al, secret: *secret, webRoot: *webRoot}
+	s := &server{
+		content: cs, users: us, audit: al, secret: *secret, webRoot: *webRoot,
+		loginRL: ratelimit.New(*maxFails, *lockFor, ratelimit.DefaultWindow),
+		dev:     *dev,
+	}
 	mux := http.NewServeMux()
 
 	// ---- 展示侧只读 API ----
@@ -108,10 +137,24 @@ func main() {
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	log.Printf("EduDesk 服务端已启动: http://localhost%s", *addr)
-	log.Printf("  教室屏终端: http://localhost%s/?profile=classroom", *addr)
-	log.Printf("  走廊屏终端: http://localhost%s/?profile=corridor", *addr)
-	log.Printf("  教师后台:   http://localhost%s/admin/", *addr)
+	scheme := "http"
+	if *tlsCert != "" && *tlsKey != "" {
+		scheme = "https"
+	}
+	log.Printf("EduDesk 服务端已启动: %s://localhost%s", scheme, *addr)
+	log.Printf("  教室屏终端: %s://localhost%s/?profile=classroom", scheme, *addr)
+	log.Printf("  走廊屏终端: %s://localhost%s/?profile=corridor", scheme, *addr)
+	log.Printf("  教师后台:   %s://localhost%s/admin/", scheme, *addr)
+	log.Printf("  吊销清单:   %s（有效条目 %d）", *revPath, us.RevokedCount())
+
+	// P1-9：原生 TLS。设计推荐置于反向代理之后，但内网单机部署时
+	// 原生 HTTPS 比"再维护一个 Caddy/Nginx"更少故障面，故两条路都留。
+	if scheme == "https" {
+		if err := srv.ListenAndServeTLS(*tlsCert, *tlsKey); err != nil {
+			log.Fatalf("服务异常退出: %v", err)
+		}
+		return
+	}
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("服务异常退出: %v", err)
 	}
@@ -125,6 +168,8 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"time":   time.Now().Format(time.RFC3339),
 		// pid 供运维与看门狗交叉核对（心跳文件里的 pid 应与此一致）
 		"pid": os.Getpid(),
+		// dev=true 表示本实例正使用演示密钥，任何上线门禁都应据此否决
+		"dev": s.dev,
 	})
 }
 
@@ -154,6 +199,22 @@ func (s *server) handleBundle(w http.ResponseWriter, r *http.Request) {
 // ---------------- 教师后台写方 ----------------
 
 func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	// P1-8：先过限流。计数键用来源 IP —— 教师后台在内网，来源可识别；
+	// 放在解析请求体之前，被锁定时不消耗解析成本。
+	ip := clientIP(r)
+	if ok, retry := s.loginRL.Allow(ip); !ok {
+		w.Header().Set("Retry-After", strconv.Itoa(int(retry.Seconds())+1))
+		s.audit.Append(audit.Entry{
+			Actor: "-", Role: "-", Action: audit.ActionLoginLocked,
+			Result: "DENIED", Reason: "失败次数过多，已临时锁定", ClientIP: ip,
+		})
+		writeJSON(w, http.StatusTooManyRequests, map[string]interface{}{
+			"error":       "登录失败次数过多，请稍后再试",
+			"retry_after": int(retry.Seconds()) + 1,
+		})
+		return
+	}
+
 	var req struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -164,25 +225,51 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	token, sess, err := s.users.Login(req.Username, req.Password)
 	if err != nil {
+		lockNow := s.loginRL.Fail(ip)
+		reason := err.Error()
+		if lockNow {
+			reason += "（已达失败上限，该来源临时锁定）"
+		}
 		s.audit.Append(audit.Entry{
 			Actor: req.Username, Role: "-", Action: audit.ActionLoginFailure,
-			Result: "DENIED", Reason: err.Error(), ClientIP: clientIP(r),
+			Result: "DENIED", Reason: reason, ClientIP: ip,
 		})
 		// 统一 401，不区分"用户不存在"与"密码错误"
 		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"error": "账号或密码不正确"})
 		return
 	}
+	s.loginRL.Succeed(ip)
 	s.audit.Append(audit.Entry{
 		Actor: sess.Username, Role: string(sess.Role), Action: audit.ActionLoginSuccess,
-		Result: "OK", ClientIP: clientIP(r),
+		Result: "OK", ClientIP: ip,
 	})
 	writeJSON(w, http.StatusOK, map[string]interface{}{"token": token, "session": sess})
 }
 
+// handleLogout 登出：把令牌 jti 写入吊销清单，服务端立即失效（P1-7）。
+//
+// 无状态 HMAC 令牌如果不维护名单，登出只是"客户端假装忘记"——
+// 令牌在 8h 有效期内依然可用。对内容发布口而言这是不可接受的止损缺口。
 func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	// 令牌为无状态 HMAC，服务端不维护会话表；登出由客户端丢弃令牌完成。
-	// 若需强制吊销，后续接入令牌黑名单（Redis/DB）。
-	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+	token := bearer(r)
+	if token == "" {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+		return
+	}
+	if err := s.users.Revoke(token); err != nil {
+		// 令牌本就无效/已过期：对调用方而言登出仍算成功，避免泄露令牌状态。
+		s.audit.Append(audit.Entry{
+			Actor: "-", Role: "-", Action: audit.ActionLogout,
+			Result: "ERROR", Reason: err.Error(), ClientIP: clientIP(r),
+		})
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+		return
+	}
+	s.audit.Append(audit.Entry{
+		Actor: "-", Role: "-", Action: audit.ActionLogout,
+		Result: "OK", ClientIP: clientIP(r),
+	})
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "revoked": true})
 }
 
 // requireAuth 校验登录态 + 发布权限（API 授权关 + 发布入口关）。
@@ -465,11 +552,22 @@ func bearer(r *http.Request) string {
 	return ""
 }
 
+// clientIP 解析来源地址。
+//
+// 必须**去掉端口**：r.RemoteAddr 形如 "10.0.0.5:51234"，而每次新建 TCP 连接的源端口都不同，
+// 直接把 RemoteAddr 当限流键会让每次尝试都落在不同的桶里 —— 限流形同不存在。
 func clientIP(r *http.Request) string {
 	if v := r.Header.Get("X-Forwarded-For"); v != "" {
-		return strings.Split(v, ",")[0]
+		return strings.TrimSpace(strings.Split(v, ",")[0])
 	}
-	return r.RemoteAddr
+	if v := r.Header.Get("X-Real-IP"); v != "" {
+		return strings.TrimSpace(v)
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr // 理论上不会发生；退化为原值好过空串
+	}
+	return host
 }
 
 func newID(prefix string) string {

@@ -12,13 +12,19 @@
   Usage:
     .\03-install-autostart.ps1 -Profile classroom -TerminalId A2F-07
     .\03-install-autostart.ps1 -Profile corridor  -TerminalId B1-02 -DailyRestart 05:00
+    .\03-install-autostart.ps1 -Config ..\server-go\data\terminal-config.json -DailyRestart 05:00
+
+  Preferred form (P1-11): -Config. Profile and terminal id then live in one JSON file
+  that 06-validate-terminal-config.ps1 checks, instead of being typed into the task
+  argument string where a typo is invisible until a screen shows the wrong content.
 #>
 param(
     [ValidateSet('classroom', 'corridor')]
     [string]$Profile = 'classroom',
     [string]$TerminalId = 'DEV-00',
     [int]$Port = 8080,
-    [string]$DailyRestart = ''          # e.g. '05:00' ; empty = skip
+    [string]$DailyRestart = '',          # e.g. '05:00' ; empty = skip
+    [string]$Config = ''                 # path to terminal-config.json (P1-11)
 )
 
 $ErrorActionPreference = 'Stop'
@@ -40,9 +46,27 @@ function New-EduTask {
         -Settings $set -RunLevel Highest -Description $Desc | Out-Null
 }
 
+# ---- P1-11: validate the config first, and register the task against it -------
+$launchArgs = ''
+if ($Config -ne '') {
+    $validator = Join-Path $here '06-validate-terminal-config.ps1'
+    if (-not (Test-Path $validator)) { throw "validator not found: $validator" }
+    Write-Host "[0/2] Validating terminal config: $Config"
+    & $validator -ConfigPath $Config
+    if ($LASTEXITCODE -ne 0) { throw "terminal config validation FAILED - fix it before registering autostart" }
+    # read the effective profile/id back out for task naming only
+    $cfgObj = Get-Content -Raw -Path $Config -Encoding UTF8 | ConvertFrom-Json
+    $Profile    = $cfgObj.profile
+    $TerminalId = $cfgObj.terminal_id
+    $launchArgs = '-Config "{0}"' -f (Resolve-Path $Config).Path
+} else {
+    Write-Host '[0/2] No -Config given; profile/terminal id will be baked into the task arguments (legacy form).'
+    $launchArgs = '-Profile {0} -TerminalId {1} -Port {2}' -f $Profile, $TerminalId, $Port
+}
+
 Write-Host "[1/2] Registering logon autostart task: $taskName"
 $act = New-ScheduledTaskAction -Execute 'powershell.exe' `
-    -Argument ("-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"{0}`" -Profile {1} -TerminalId {2} -Port {3}" -f $launcher, $Profile, $TerminalId, $Port)
+    -Argument ("-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"{0}`" {1}" -f $launcher, $launchArgs)
 $trg = New-ScheduledTaskTrigger -AtLogOn
 New-EduTask -Name $taskName -Action $act -Trigger $trg `
     -Desc "EduDesk kiosk display autostart (profile=$Profile terminal=$TerminalId)."

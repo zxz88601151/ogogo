@@ -18,9 +18,18 @@
 heartbeat.json
 terminal-state.json
 watchdog.json
+# 令牌吊销清单：现场生成，含会话编号，不入库
+revocations.json
+revocations.json.tmp
 *.tmp
 
-# ---- Node（参考实现）----
+# ---- TLS 私钥（P1-9）：现场证书永不入库 ----
+server-go/tls/
+*.key
+*.pfx
+*.p12
+
+# ---- Node（仅 archive/server-node 历史对照）----
 node_modules/
 npm-debug.log*
 

@@ -20,6 +20,8 @@ type Action string
 const (
 	ActionLoginSuccess Action = "LOGIN_SUCCESS"
 	ActionLoginFailure Action = "LOGIN_FAILURE"
+	ActionLoginLocked  Action = "LOGIN_LOCKED" // 触发限流锁定（P1-8）
+	ActionLogout       Action = "LOGOUT"       // 令牌吊销（P1-7）
 	ActionCreate       Action = "CREATE"
 	ActionUpdate       Action = "UPDATE"
 	ActionWithdraw     Action = "WITHDRAW"

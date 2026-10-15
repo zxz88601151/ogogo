@@ -33,6 +33,7 @@ import (
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 
+	"edudesk/internal/auth"
 	"edudesk/internal/heartbeat"
 	"edudesk/internal/watchdog"
 )
@@ -85,6 +86,7 @@ func usage() {
 usage:
   edudesk-watchdog install   -exe <path> [-args "<a b c>"] [-workdir <dir>]
                              [-code TERMINAL-01] [-tick 2] [-recovery <script>]
+                             (-dev | -secret <32+ bytes>)
   edudesk-watchdog uninstall
   edudesk-watchdog start
   edudesk-watchdog stop
@@ -131,8 +133,13 @@ func cmdDebug(args []string) error {
 	exe := fs.String("exe", "", "override main process exe path")
 	argsStr := fs.String("args", "", "override main process args")
 	code := fs.String("code", "", "override terminal code")
+	devMode := fs.Bool("dev", false, "append --dev to the supervised process args")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	supArgs := splitArgs(*argsStr)
+	if *devMode && !containsFlag(supArgs, "--dev") {
+		supArgs = append(supArgs, "--dev")
 	}
 
 	var cfg Config
@@ -140,7 +147,7 @@ func cmdDebug(args []string) error {
 		// 允许完全从命令行构造一个临时配置（开发验证用）
 		cfg = Config{
 			ExePath:      *exe,
-			Args:         splitArgs(*argsStr),
+			Args:         supArgs,
 			WorkDir:      filepath.Dir(*exe),
 			TerminalCode: firstNonEmpty(*code, "TERMINAL-DEV"),
 			TickSec:      2,
@@ -202,6 +209,11 @@ func cmdInstall(args []string) error {
 	code := fs.String("code", "TERMINAL-01", "terminal code shown on FALLBACK")
 	tick := fs.Int("tick", 2, "supervision tick seconds")
 	recovery := fs.String("recovery", "", "recovery script for SCM 3rd failure action")
+	// P0-1 联动：被守护进程现在会因弱密钥**拒绝启动**。若这里不把密钥传下去，
+	// 看门狗会看到进程秒退、判定崩溃、5min 内 3 次后打 FALLBACK —— 整机黑屏。
+	// 因此密钥在这里是一等参数，不能靠手改 JSON。
+	devMode := fs.Bool("dev", false, "pass --dev to the supervised process (demo secret; NOT for pilot/production)")
+	secret := fs.String("secret", os.Getenv("EDUDESK_SECRET"), "signing secret handed to the supervised process (falls back to $EDUDESK_SECRET)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -223,17 +235,43 @@ func cmdInstall(args []string) error {
 		*workdir = filepath.Dir(absExe)
 	}
 
+	// 组装被守护进程参数，并在此拦住「装完就崩」的组合。
+	supArgs := splitArgs(*argsStr)
+	if !*devMode {
+		if err := auth.SecretOK(*secret); err != nil {
+			return fmt.Errorf("refusing to install: supervised process would fail to start (%v); pass -dev for a demo box or -secret <32+ bytes>", err)
+		}
+	}
+	if *devMode && !containsFlag(supArgs, "--dev") {
+		supArgs = append(supArgs, "--dev")
+	} else if *secret != "" && !containsFlag(supArgs, "-secret") && !containsFlag(supArgs, "--secret") {
+		supArgs = append(supArgs, "-secret", *secret)
+	}
+
 	// 路径规范化：从 Git Bash / MSYS 传参时，反斜杠与正斜杠可能被混用成
 	// `C://Users//x` 这类形式，直接写进 SCM 的 recovery command 会导致脚本无法执行。
 	// 统一 Clean + FromSlash 成合法 Windows 路径。
+	//
+	// 还必须 Abs：SCM 恢复命令由 SCM 自己启动，工作目录不是我们的 cwd，
+	// 相对路径（`..\deploy-windows\x.cmd`）在 SCM 眼里无意义 —— 第 3 次恢复动作
+	// 会静默失败，而前两次重启看起来一切正常，故障要到真正需要恢复时才暴露。
 	if *recovery != "" {
 		*recovery = filepath.Clean(filepath.FromSlash(*recovery))
+		abs, err := filepath.Abs(*recovery)
+		if err != nil {
+			return fmt.Errorf("recovery script path: %w", err)
+		}
+		*recovery = abs
+		if _, err := os.Stat(*recovery); err != nil {
+			return fmt.Errorf("recovery script not found: %s", *recovery)
+		}
 	}
+	*workdir = filepath.Clean(filepath.FromSlash(*workdir))
 
 	// 1) 写配置
 	cfg := Config{
 		ExePath:        absExe,
-		Args:           splitArgs(*argsStr),
+		Args:           supArgs,
 		WorkDir:        *workdir,
 		TerminalCode:   *code,
 		TickSec:        *tick,
@@ -491,6 +529,19 @@ func splitArgs(s string) []string {
 		return nil
 	}
 	return strings.Fields(s)
+}
+
+// containsFlag 判断参数切片里是否已有该开关（避免 -dev / -secret 被重复追加）。
+// 同时匹配 "-x" 与 "--x"，并容忍 "-x=value" 写法。
+func containsFlag(args []string, flagName string) bool {
+	bare := strings.TrimLeft(flagName, "-")
+	for _, a := range args {
+		trimmed := strings.TrimLeft(a, "-")
+		if trimmed == bare || strings.HasPrefix(trimmed, bare+"=") {
+			return true
+		}
+	}
+	return false
 }
 
 func firstNonEmpty(vals ...string) string {

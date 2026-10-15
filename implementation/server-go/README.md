@@ -34,14 +34,36 @@ server-go/
 ```bash
 cd implementation/server-go
 
-# 开发运行
-go run ./cmd/edudesk -addr :8080 -secret "dev-only-secret-change-me"
+# 开发运行：密钥 fail-closed（P0-1）要求显式声明降级
+go run ./cmd/edudesk --dev
 
-# 生产：必须用环境变量注入密钥，且置于 TLS 反向代理之后
+# 试点 / 生产：密钥必须 ≥32 字节，否则服务端拒绝启动
 export EDUDESK_SECRET="<32字节以上随机串>"
 go build -o edudesk ./cmd/edudesk
 ./edudesk -addr :8080
 ```
+
+**P0-1 密钥 fail-closed**：未设 `EDUDESK_SECRET`（或长度 <32）且未传 `--dev` 时，
+服务端**直接拒绝启动**并打印原因。理由：终端验签密钥随前端下发，演示密钥一旦被带到
+生产，等价于把 Bundle 签名私钥公开。宁可启动失败，也不要"看起来正常但可被伪造"。
+
+启动参数：
+
+| 参数 | 默认 | 说明 |
+|---|---|---|
+| `-addr` | `:8080` | 监听地址 |
+| `-secret` | `$EDUDESK_SECRET` | Bundle 签名密钥（≥32 字节） |
+| `--dev` | 关 | 允许演示密钥，仅本机调试 |
+| `-revocations` | `data/revocations.json` | 令牌吊销清单（P1-7） |
+| `-tls-cert` / `-tls-key` | 空 | 同时提供则启用原生 HTTPS（P1-9） |
+| `-login-max-fails` | 5 | 登录失败锁定阈值（P1-8） |
+| `-login-lock-for` | 15m | 触发阈值后的锁定时长（P1-8） |
+| `-web` | `.` | 静态资源根（含 `terminal/`、`admin/`） |
+| `-content` / `-users` / `-audit` | `data/…` | 内容源 / 用户 / 审计日志 |
+
+TLS 二选一：原生 `-tls-cert/-tls-key`，或反向代理（样例见
+`deploy-windows/Caddyfile.sample`）。内网也不能裸奔 —— 教师登录口令走
+`POST /admin/api/login`，明文传输等于公开。
 
 | 入口 | 地址 | 说明 |
 |------|------|------|
@@ -161,7 +183,11 @@ cd ../ && node tests/core.test.js
 - `canon`：与 JS 的规范化字节一致性黄金向量、验签往返、篡改检测；
 - `privacylint`：8 类 PII 黑名单、白名单严格性、嵌套 audience；
 - `model`：双 Profile 差异、撤回硬删 + tombstone、WITHDRAWN 不下发、六态标注；
-- `auth`：登录成败、令牌篡改/过期、预留角色登录拒绝、发布权限矩阵；
+- `auth`：登录成败、令牌篡改/过期、预留角色登录拒绝、发布权限矩阵、
+  密钥强度 fail-closed、jti 唯一性、吊销即时生效、伪造令牌不可进吊销清单、
+  吊销清单跨重启恢复、清单损坏拒绝启动；
+- `ratelimit`（7 条）：阈值前放行、第 N 次锁定、锁定期满恢复、
+  成功登录清零、计数窗口滑出、多来源互不影响；
 - `validate`：8 类禁止内容、长度、类型白名单、时间顺序、ID 字符集；
 - `store`：快照深拷贝、事务落盘、失败回滚、撤回留痕；
 - `watchdog`（12 条）：崩溃重启、心跳超时 kill+重启、启动宽限、
@@ -176,7 +202,7 @@ cd ../ && node tests/core.test.js
 |----|------|------|
 | D-01 走廊屏竖装 | 响应式兼容 | 布局未针对竖屏优化 |
 | D-02 撤回推送 | 60s 轮询 | 未使用 SSE |
-| D-06 Kiosk | 未实现 | 需 Windows Assigned Access 配置 |
+| D-06 Kiosk | 脚本就绪，**未真机验证** | 需 Windows Assigned Access 配置 |
 | D-09 签名算法 | HMAC-SHA256 | 终端与服务端共享密钥；生产应改 Ed25519 非对称 |
 | TP-02 认证 | 本地账号 + HMAC 令牌 | 未对接学校统一身份 |
 | TP-01 教务对接 | 手工录入 | 未对接教务库 |
@@ -184,12 +210,23 @@ cd ../ && node tests/core.test.js
 
 **已知缺口**：
 
-- 令牌无状态，**服务端无吊销列表**，登出仅靠客户端丢弃令牌；
-  若需强制踢下线须引入 Redis/DB 黑名单。
 - 终端 HMAC 验签使用共享密钥，密钥随前端下发 ——
-  符合 MVP 演示，**生产必须改为 Ed25519 公钥验签**。
-- 无速率限制与登录失败锁定，生产需补。
+  符合 MVP 演示，**生产必须改为 Ed25519 公钥验签**（P2-12）。
+- 登录限流是**单进程内存**计数：服务多实例部署时需换成共享存储，
+  否则每个实例各自计数。单机 MVP 拓扑下不构成问题。
 - 未实现 `HEAD /bundle` 的独立处理（当前由 GET handler 覆盖，语义正确但未单测）。
+
+### 7.1 已关闭缺口（补丁轮）
+
+| 原缺口 | 补丁 | 落地位置 |
+|---|---|---|
+| 密钥默认演示值，生产忘记换即裸奔 | P0-1 fail-closed + `--dev` 显式逃生门 | `cmd/edudesk` `auth.SecretOK` |
+| 登出只靠客户端丢弃令牌 | P1-7 jti + 文件吊销清单（跨重启） | `internal/auth` `Revoke/IsRevoked` |
+| 无登录速率限制 | P1-8 per-IP 5 次失败锁 15 分钟 | `internal/ratelimit` + `handleLogin` |
+| README 要求 TLS 但无实现 | P1-9 原生 `-tls-cert/-tls-key` + Caddy 样例 | `cmd/edudesk` `deploy-windows/Caddyfile.sample` |
+| 终端参数手填易错 | P1-11 配置模板 + 校验脚本 | `terminal-config.template.json` + `06-validate-terminal-config.ps1` |
+| 部署缺统一上线门禁 | P0-2 preflight 门禁（9 项 PASS/FAIL） | `deploy-windows/preflight.ps1` |
+| Node 旧实现可被误部署 | P0-6 封存 | `implementation/archive/server-node/` |
 
 ## 8. 安全红线（不可突破）
 

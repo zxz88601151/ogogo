@@ -1,0 +1,19 @@
+{
+  "_comment": "EduDesk 终端配置模板（P1-11）。复制为 server-go/data/terminal-config.json 后按现场填写，并用 06-validate-terminal-config.ps1 校验；启动时由 edudesk-launcher.ps1 -Config 读取。",
+  "_fields": {
+    "terminal_id": "现场编号，格式 <楼栋><楼层>-<序号>，如 A2F-07；kiosk URL 的 terminal 参数取自它",
+    "profile": "classroom | corridor；决定 bundle 内容类型白名单（设计 04）",
+    "server_url": "服务端基址；同机部署用 http://127.0.0.1:8080，LAN 部署填服务端地址（启用原生 TLS 时为 https）",
+    "poll_sec": "终端轮询周期（秒），设计默认 60；低于 30 会给服务端带来无谓压力",
+    "kiosk": "true = 浏览器 kiosk 全屏；false = 仅打开服务端供人工排查",
+    "location": "现场位置描述，仅用于运行日志与运维对号，不进内容 bundle",
+    "expected_profiles": "该校点应存在的终端清单，供批量校验脚本交叉核对（可留空）"
+  },
+  "terminal_id": "DEV-00",
+  "profile": "classroom",
+  "server_url": "http://127.0.0.1:8080",
+  "poll_sec": 60,
+  "kiosk": true,
+  "location": "未配置",
+  "expected_profiles": []
+}
