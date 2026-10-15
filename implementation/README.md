@@ -11,6 +11,16 @@
 
 终端（`terminal/`）为两者共用，已包含 F-2 撤回记忆跨重启持久化与 F-3 时效边界处理。
 
+## 部署套件（两套，对应两种机器）
+
+| 目录 | 目标 | 托管方式 |
+|---|---|---|
+| `deploy-windows/` | 校园 **Windows 展示终端**（Kiosk） | SCM + `edudesk-watchdog` + 启动脚本 |
+| `deploy-linux/` | 内网 **Linux 服务端节点**（adminjiedian / 192.168.3.123） | systemd（`Restart=always` 替代看门狗） |
+
+**当前实机部署**：服务端已运行于 `192.168.3.123:8080`（`dev=false`，生产密钥），
+详见 `deploy-linux/README.md`。校园 Windows 终端侧尚未部署。
+
 ## 架构
 
 ```

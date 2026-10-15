@@ -1,0 +1,10 @@
+{
+  "_comment": "现场终端配置（Linux 工控机 adminjiedian / 192.168.3.123 部署副本）。校验参考 ../deploy-windows/06-validate-terminal-config.ps1；本副本记录该节点的终端参数基线。",
+  "terminal_id": "LXC-123-01",
+  "profile": "classroom",
+  "server_url": "http://192.168.3.123:8080",
+  "poll_sec": 60,
+  "kiosk": false,
+  "location": "adminjiedian 工控机（内网演示节点）",
+  "expected_profiles": ["classroom", "corridor"]
+}

@@ -221,23 +221,34 @@ async function main() {
   info('未知 profile 行为', 'HTTP ' + bogus.status +
     (bogus.body && bogus.body.profile ? ' -> 回落 profile=' + bogus.body.profile : ''));
 
-  // ---- T12 心跳与 /health 的 PID 交叉核对（仅本机运行时有意义）----
-  try {
-    const fs = require('fs');
-    const hbPath = process.env.ProgramData
-      ? path.join(process.env.ProgramData, 'EduDesk', 'heartbeat.json')
-      : 'C:/ProgramData/EduDesk/heartbeat.json';
-    const hb = JSON.parse(fs.readFileSync(hbPath, 'utf8'));
-    const ageSec = (Date.now() - hb.ts) / 1000;
-    const health = await (await fetch(BASE + '/health')).json();
-    const pidMatch = String(hb.pid) === String(health.pid);
-    check('T12', '心跳新鲜且 PID 与 /health 一致',
-      pidMatch && ageSec >= 0 && ageSec < 15,
-      'heartbeat pid=' + hb.pid + ' / health pid=' + health.pid +
-      ' | age=' + ageSec.toFixed(1) + 's' +
-      (pidMatch ? '' : ' —— PID 不一致，说明心跳由其他进程写入'));
-  } catch (e) {
-    info('心跳检查', '未读到心跳文件（非本机部署或看门狗未运行），跳过');
+  // ---- T12 心跳与 /health 的 PID 交叉核对 ----
+  // 管辖范围说明：心跳文件由**本机**看门狗写入本机磁盘，只有被测实例与
+  // 本机同机时，这个核对才成立。若 BASE 指向远程主机，读到的心跳必然
+  // 属于本机残留实例，与远端 /health 的 PID 天然不符 —— 那属于断言越界
+  // （拿 A 的证物审 B），不是服务缺陷。故此处显式跳过，不产生 FAIL。
+  const healthForHb = await (await fetch(BASE + '/health')).json();
+  let targetHost = '';
+  try { targetHost = new URL(BASE).hostname; } catch (e) { targetHost = ''; }
+  const LOCAL_HOSTS = ['127.0.0.1', 'localhost', '::1', '0.0.0.0'];
+  if (!LOCAL_HOSTS.includes(targetHost)) {
+    info('心跳检查', '目标 ' + targetHost + ' 为非本机实例，心跳文件不归其管辖，跳过 T12');
+  } else {
+    try {
+      const fs = require('fs');
+      const hbPath = process.env.ProgramData
+        ? path.join(process.env.ProgramData, 'EduDesk', 'heartbeat.json')
+        : 'C:/ProgramData/EduDesk/heartbeat.json';
+      const hb = JSON.parse(fs.readFileSync(hbPath, 'utf8'));
+      const ageSec = (Date.now() - hb.ts) / 1000;
+      const pidMatch = String(hb.pid) === String(healthForHb.pid);
+      check('T12', '心跳新鲜且 PID 与 /health 一致',
+        pidMatch && ageSec >= 0 && ageSec < 15,
+        'heartbeat pid=' + hb.pid + ' / health pid=' + healthForHb.pid +
+        ' | age=' + ageSec.toFixed(1) + 's' +
+        (pidMatch ? '' : ' —— PID 不一致，说明心跳由其他进程写入'));
+    } catch (e) {
+      info('心跳检查', '未读到心跳文件（看门狗未运行），跳过');
+    }
   }
 
   report(Date.now() - t0);

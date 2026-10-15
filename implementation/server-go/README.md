@@ -346,3 +346,27 @@ cd .. && node tests/live-smoke.js
 
 `implementation/deploy-windows/` —— 见该目录 `README.md`（D-06 落地脚本、
 与设计 05 §7 的偏差说明、W-01~W-10 验收对照、已知缺口）。
+
+## 10. Linux 节点部署（服务端侧）
+
+服务端已以 **systemd 服务**形态部署到内网 Linux 节点
+（adminjiedian / `192.168.3.123`，Ubuntu 26.04，Go 交叉编译 `linux/amd64`）。
+
+| 项 | 值 |
+| --- | --- |
+| 部署套件 | `implementation/deploy-linux/`（`package.sh` 打包 / `install.sh` 安装 / `edudesk.service`） |
+| 安装路径 | `/opt/edudesk/` |
+| 运行账号 | `edudesk`（系统账号，nologin） |
+| 监听 | `0.0.0.0:8080` |
+| 终端 / 后台 | `http://192.168.3.123:8080/?profile=classroom` ｜ `/admin/` |
+| 运行模式 | `dev=false`（生产密钥，P0-1 通过） |
+| 常驻内存 | ≈3 MB |
+
+**Linux 端不用 `edudesk-watchdog`**：该组件依赖 `golang.org/x/sys/windows/svc`，
+是 SCM 专属实现，不可移植；Linux 上的等价能力（自启 / 崩溃重启 / 崩溃风暴熔断）
+由 systemd 的 `Restart=always` + `StartLimitBurst` 承担。因此
+`tests/live-smoke.js` 的 **T12（心跳 PID 交叉核对）在远程目标上自动跳过** ——
+心跳文件由本机看门狗写入本机磁盘，拿它去核对远端 `/health` 属于断言越界，不是服务缺陷。
+
+实测结论见 `implementation/deploy-linux/README.md`；现场运维以
+目标机 `/opt/edudesk/DEPLOY.md` 为准。

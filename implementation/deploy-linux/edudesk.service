@@ -1,0 +1,39 @@
+[Unit]
+Description=EduDesk Offline Campus Display - LAN Server (adminjiedian / 192.168.3.123)
+Documentation=file:///opt/edudesk/DEPLOY.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=edudesk
+Group=edudesk
+WorkingDirectory=/opt/edudesk
+
+# 密钥从 root:edudesk 0600 的 EnvironmentFile 注入，不进命令行（避免 ps 泄露），不进仓库。
+EnvironmentFile=/opt/edudesk/edudesk.env
+
+# 生产密钥 fail-closed（P0-1）：无 EDUDESK_SECRET 或 <32 字节时服务端拒绝启动。此处不传 --dev。
+ExecStart=/opt/edudesk/edudesk -addr 0.0.0.0:8080 -web /opt/edudesk -content /opt/edudesk/data/content-source.json -users /opt/edudesk/data/users.json -audit /opt/edudesk/data/audit.log -revocations /opt/edudesk/data/revocations.json
+
+Restart=always
+RestartSec=3
+# 连续崩溃保护：5 分钟内最多 5 次，之后进入 failed（对应看门狗 FALLBACK 语义）
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# ---- 加固（对齐 05-Windows终端运行规格 的最小权限思路）----
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/edudesk/data
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

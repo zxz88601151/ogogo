@@ -1,0 +1,22 @@
+# 换行符策略
+# 本仓库在 Windows 上开发（core.autocrlf=true），但 deploy-linux/ 下的文件
+# 要原样投放到 Linux 执行。若让 Git 在检出时把 .sh 转成 CRLF，
+# 目标机上会直接报 `bad interpreter: /usr/bin/env bash^M` —— 脚本静默不可用。
+# 因此对 Unix 侧文件强制 LF。
+
+* text=auto
+
+# Linux 部署套件：必须 LF
+*.sh            text eol=lf
+*.service       text eol=lf
+*.env           text eol=lf
+
+# Caddyfile / nginx 片段等也按 LF
+Caddyfile*      text eol=lf
+
+# 二进制与产物不做换行符转换
+*.exe           binary
+*.png           binary
+*.jpg           binary
+*.zip           binary
+*.gz            binary
