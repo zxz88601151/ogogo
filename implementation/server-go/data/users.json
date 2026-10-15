@@ -3,21 +3,14 @@
     "username": "teacher01",
     "display_name": "张老师",
     "role": "teacher",
-    "password_hash": "pbkdf2-sha256$120000$a524e8e09eaf98ede0adf5e641661ed9$8c1582d4e80fc5a9330513de4b5b9961a5045c0ccc3ba869db8503f8080b10b6",
+    "password_hash": "pbkdf2-sha256$120000$cd042d6d41bd30b7b60fc201291213e8$2f20492437514651c8ff3264d39c9576f92499d653e77469f2d0de0ed77243f8",
     "active": true
   },
   {
     "username": "admin01",
     "display_name": "运维管理员",
     "role": "admin",
-    "password_hash": "pbkdf2-sha256$120000$68de5bfdfa40fbd99d657df55e686023$e70e65973f381bf8f33914c2b6daabc56e680c4e82a9ee5c55573352ba951c86",
-    "active": true
-  },
-  {
-    "username": "academic01",
-    "display_name": "教务主任",
-    "role": "academic_offices",
-    "password_hash": "pbkdf2-sha256$120000$577f5b94ac8d026e1e24fe46b1563267$eb5ed996e4c71a5393e71db70c10ec7b98bb30ac591722cf506ac6687c06dec7",
+    "password_hash": "pbkdf2-sha256$120000$2b7698cea1473038255de1976058abba$022c09a1201cc10b4a6c3477d227e702d71d77b25a4ecf2aceb1ecea51fe73d7",
     "active": true
   }
 ]

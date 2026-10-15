@@ -71,13 +71,24 @@ TLS 二选一：原生 `-tls-cert/-tls-key`，或反向代理（样例见
 | 走廊屏终端 | `http://<host>:8080/?profile=corridor` | 公告 / 活动 / 服务 / 天气 |
 | 教师后台 | `http://<host>:8080/admin/` | 需登录 |
 
-演示账号（**仅演示用，上线前必须改密并删除 academic01**）：
+账号口令**由部署时签发，仓库内不保存明文**（`data/users.json` 只存
+PBKDF2-HMAC-SHA256(120k) 加盐哈希，不可反推）。
 
-| 账号 | 密码 | 角色 | 说明 |
-|------|------|------|------|
-| `teacher01` | `Teach@2026` | teacher | 本版本最高活跃权限 |
-| `admin01` | `Admin@2026` | admin | 仅终端运维，**无内容发布权** |
-| `academic01` | `Acad@2026` | academic_offices | 预留角色，**登录即拒** |
+| 账号 | 角色 | 说明 |
+|------|------|------|
+| `teacher01` | teacher | 本版本最高活跃权限（内容发布） |
+| `admin01` | admin | 仅终端运维，**无内容发布权** |
+
+签发 / 轮换口令：
+
+```bash
+go run ./cmd/genuser <username> <password> <displayName> <role>
+```
+
+> - 新口令请交由现场管理员保管，**不要提交进仓库**；轮换后须重启服务
+>   （`users.json` 仅在启动时加载一次）。
+> - 预留角色 `academic_offices`（教务）**不写入 `users.json`** ——
+>   ADR-018 规定其在本版本不激活，登录一律 401。
 
 ### 角色能力矩阵（授权层实证）
 
